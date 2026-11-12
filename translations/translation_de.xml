@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<l10n>
+    <texts>
+        <text name="input_SS_CLEAN_SHOT" text="Screenshot Studio: sauberes Bild"/>
+        <text name="input_SS_ORBIT" text="Screenshot Studio: Rundum"/>
+        <text name="input_SS_UI_SHOT" text="Screenshot Studio: Menü-Bild (5 s)"/>
+        <text name="input_SS_GOLDEN_HOUR" text="Screenshot Studio: Goldene Stunde an/aus"/>
+    </texts>
+</l10n>

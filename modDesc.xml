@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<modDesc descVersion="114" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
+    <author>Fennell</author>
+    <version>0.1.0.0</version>
+    <title>
+        <en>DTM Screenshot Studio</en>
+        <de>DTM Screenshot Studio</de>
+    </title>
+    <description>
+        <en><![CDATA[A tool for modders: screenshots of your mod for ModHub and your website, taken by the game. Single player only.
+
+Right Ctrl + 1: clean shot of the current view, without HUD.
+Right Ctrl + 2: orbit. Shots from all around the vehicle you sit in (with everything attached) or the nearest building.
+Right Ctrl + 3: UI shot. Waits 5 seconds so you can open a menu, then saves the screen with the menu.
+Right Ctrl + 4: golden hour. Evening light and sun; press again to get the old time back.
+
+Pictures are 1920x1080 where the game allows it and go to modSettings/FS25_ScreenshotStudio/<mod name>/.
+
+Console: ssShot, ssOrbit [count] [distance], ssUi [seconds], ssGolden [hour], ssFolder [name], ssRadius [metres], ssMethod [method], ssProbe.]]></en>
+        <de><![CDATA[Ein Werkzeug für Modder: Screenshots deiner Mod für den ModHub und deine Webseite, vom Spiel aufgenommen. Nur Einzelspieler.
+
+Rechte Strg + 1: sauberes Bild der aktuellen Ansicht, ohne HUD.
+Rechte Strg + 2: Rundum. Bilder von allen Seiten des Fahrzeugs, in dem du sitzt (mit allem Angehängten), oder des nächsten Gebäudes.
+Rechte Strg + 3: Menü-Bild. Wartet 5 Sekunden, damit du ein Menü öffnen kannst, und speichert dann den Bildschirm mit dem Menü.
+Rechte Strg + 4: Goldene Stunde. Abendlicht und Sonne; nochmal drücken für die alte Uhrzeit.
+
+Die Bilder sind 1920x1080, wo das Spiel es erlaubt, und landen in modSettings/FS25_ScreenshotStudio/<Modname>/.
+
+Konsole: ssShot, ssOrbit [Anzahl] [Abstand], ssUi [Sekunden], ssGolden [Stunde], ssFolder [Name], ssRadius [Meter], ssMethod [Methode], ssProbe.]]></de>
+    </description>
+
+    <iconFilename>icon_screenshotStudio.png</iconFilename>
+    <multiplayer supported="false"/>
+    <l10n filenamePrefix="translations/translation"/>
+
+    <extraSourceFiles>
+        <sourceFile filename="scripts/ScreenshotStudio.lua"/>
+    </extraSourceFiles>
+
+    <actions>
+        <action name="SS_CLEAN_SHOT"/>
+        <action name="SS_ORBIT"/>
+        <action name="SS_UI_SHOT"/>
+        <action name="SS_GOLDEN_HOUR"/>
+    </actions>
+
+    <inputBinding>
+        <actionBinding action="SS_CLEAN_SHOT">
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_rctrl KEY_1"/>
+        </actionBinding>
+        <actionBinding action="SS_ORBIT">
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_rctrl KEY_2"/>
+        </actionBinding>
+        <actionBinding action="SS_UI_SHOT">
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_rctrl KEY_3"/>
+        </actionBinding>
+        <actionBinding action="SS_GOLDEN_HOUR">
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_rctrl KEY_4"/>
+        </actionBinding>
+    </inputBinding>
+</modDesc>
