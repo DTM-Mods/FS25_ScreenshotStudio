@@ -26,6 +26,10 @@ jobs:
     uses: DTM-Mods/.github/.github/workflows/fs25-mod.yml@main
     with:
       test-tag: ${{ inputs.test-tag || '' }}
+      # Two zips: the mod for the mods folder, and the tools (game runner, picking, captions) to unzip anywhere
+      zips: FS25_ScreenshotStudio ScreenshotStudio_Tools
+      build-command: python3 "$CI_PY" build --out dist --name FS25_ScreenshotStudio && python3 tools/build_tools_zip.py dist
+      install-note: "**Install:** put `FS25_ScreenshotStudio.zip` into `Documents/My Games/FarmingSimulator2025/mods` without unzipping or renaming it (single player only, it never goes on a server). `ScreenshotStudio_Tools.zip` is the rest: the game runner, picking and caption tools and their shortcuts. Unzip it anywhere; it needs Python 3 with Pillow (`pip install pillow`). See the README."
       # Settings for this mod (all optional, see DTM-Mods/.github ci/README.md):
       # zip-name: FS25_Name          # the mod's real zip name, when it differs from the repository name
       # max-files: 0                 # no GIANTS ModHub 128-file limit (big mods that never go to ModHub)

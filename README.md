@@ -5,6 +5,8 @@ A tool for modders: the game takes the screenshots of your mod for the GIANTS Mo
 ![A Ropa Tiger 6S with its RR-XL header in golden hour, framed by the mod](docs/images/hero_tiger.jpg)
 *Taken by the mod on its own: the Tiger with its header moved out of a shed, golden hour, the whole machine framed. All pictures in this README are untouched game pictures (sizes reduced), from runs on 2026-11-13.*
 
+**Download** (the [releases](https://github.com/DTM-Mods/FS25_ScreenshotStudio/releases)): `FS25_ScreenshotStudio.zip` is the mod, into `Documents/My Games/FarmingSimulator2025/mods` as it is. `ScreenshotStudio_Tools.zip` is the rest (game runner, contact sheets, picking, captions, checks, shortcuts): unzip it anywhere and run the tools from that folder; they need Python 3 with Pillow (`pip install pillow`), the tests also `lupa`. The CI builds both zips (`tools/build_tools_zip.py` makes the second).
+
 | Key | What it does |
 |-----|--------------|
 | **Right Ctrl + 1** | **Clean shot**: the current view without HUD |
