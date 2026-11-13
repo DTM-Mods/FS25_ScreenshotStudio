@@ -620,21 +620,26 @@ local function findAutoDriveDrawing(g)
     return nil
 end
 
-function SS:setQuiet(on)
+-- modsOnly (UI shots): only other mods' own copies (and AutoDrive's lines); the game's global
+-- functions, which draw the menu itself, stay, and so does the mod `keep` (the one photographed)
+function SS:setQuiet(on, modsOnly, keep)
     if on then
         if self.muted ~= nil or not self.quietEnabled then return end
         local g = trueGlobals()
         local muted, count = {}, 0
+        local modCopies = {}      -- mod environments: their own copies stay off even while menus draw
         -- written straight into the table: shadows a function the table only gets from its metatable
         local function mute(t, key)
             local f = field(t, key)
             if type(f) == "function" then
-                table.insert(muted, { t, key, f, rawget(t, key) ~= nil })
+                table.insert(muted, { t, key, f, rawget(t, key) ~= nil, modCopies[t] == true })
                 rawset(t, key, nothing)
                 count = count + 1
             end
         end
-        for _, name in ipairs(self.QUIET_FUNCTIONS) do mute(g, name) end
+        if not modsOnly then
+            for _, name in ipairs(self.QUIET_FUNCTIONS) do mute(g, name) end
+        end
         -- each mod also has its own environment, which can hold its own copies (Courseplay's bar,
         -- AutoDrive's labels still showed with only the global table muted)
         -- ... or look names up in another table than the global one: follow each __index chain
@@ -646,7 +651,7 @@ function SS:setQuiet(on)
                 if rawget(t, name) ~= nil then mute(t, name) end
             end
             local ok, mt = pcall(getmetatable, t)
-            if ok and type(mt) == "table" and type(rawget(mt, "__index")) == "table" then
+            if not modsOnly and ok and type(mt) == "table" and type(rawget(mt, "__index")) == "table" then
                 muteIn(rawget(mt, "__index"), depth + 1)
             end
         end
@@ -654,17 +659,19 @@ function SS:setQuiet(on)
         if g_modManager ~= nil and g_modManager.getActiveMods ~= nil then
             local ok, mods = pcall(g_modManager.getActiveMods, g_modManager)
             for _, mod in ipairs(ok and mods or {}) do
-                local env = mod.modName ~= nil and field(g, mod.modName) or nil
+                local env = mod.modName ~= nil and mod.modName ~= keep and field(g, mod.modName) or nil
                 if type(env) == "table" and env ~= g then
                     envs = envs + 1
+                    modCopies[env] = true
                     muteIn(env, 0)
                 end
             end
         end
-        muteIn(_G, 0)        -- this mod's own chain too
+        if not modsOnly then muteIn(_G, 0) end        -- this mod's own chain too
         local ad, where = findAutoDriveDrawing(g)
         local adCount = count
-        if ad ~= nil then
+        if ad ~= nil and where ~= keep then
+            modCopies[ad] = true
             for _, name in ipairs(self.QUIET_AUTODRIVE) do mute(ad, name) end
         end
         self.muted = muted
@@ -676,11 +683,21 @@ function SS:setQuiet(on)
                 ad ~= nil and string.format("AutoDrive lines hidden (%s)", where) or "no AutoDrive found")
         end
     elseif self.muted ~= nil then
-        for i = #self.muted, 1, -1 do
-            local m = self.muted[i]
-            rawset(m[1], m[2], m[4] and m[3] or nil)
+        self:setMuted(false)
+        self.muted, self.guiThrough = nil, nil
+    end
+end
+
+-- the muted functions off (nothing) or back on, the list kept. notModCopies: all but other mods'
+-- own copies (Gui.draw lets the menus through, which draw with the game's functions, wherever the
+-- game keeps them; AutoDrive's labels over the construction screen, drawn with AutoDrive's own
+-- copies, stay away). The first try passed only getfenv(0)'s table: the menus vanished with it.
+function SS:setMuted(on, notModCopies)
+    for i = #(self.muted or {}), 1, -1 do
+        local m = self.muted[i]
+        if not notModCopies or not m[5] then
+            rawset(m[1], m[2], on and nothing or (m[4] and m[3] or nil))
         end
-        self.muted = nil
     end
 end
 
@@ -798,6 +815,7 @@ function SS:frameCamera(corners, angle, elevation)
         local along = px * ux + py * uy + pz * uz
         d = math.max(d, along + math.abs(px * rx + pz * rz) / tanH, along + math.abs(px * vx + py * vy + pz * vz) / tanV)
     end
+    d = d * (self.viewDistance or 1)      -- ssView 35 50 3: farther back, the surroundings in the picture
     local cx, cy, cz = tx + ux * d, ty + uy * d, tz + uz * d
     if g_currentMission ~= nil and g_currentMission.terrainRootNode ~= nil then
         cy = math.max(cy, getTerrainHeightAtWorldPos(g_currentMission.terrainRootNode, cx, 0, cz) + 1.2)
@@ -1010,15 +1028,17 @@ function SS:consoleClear(state)
 end
 
 -- ssView 35 12: front three-quarter (default); -35 the other front corner; 180 the rear; 90 side-on
-function SS:consoleView(angle, elevation)
+function SS:consoleView(angle, elevation, distance)
     if angle == nil or angle == "" then
-        self.viewAngle, self.viewElevation = nil, nil
+        self.viewAngle, self.viewElevation, self.viewDistance = nil, nil, nil
     else
         self.viewAngle = tonumber(angle) or self.VIEW_ANGLE
         self.viewElevation = tonumber(elevation) or self.viewElevation
+        self.viewDistance = tonumber(distance)
     end
-    return string.format("View for colors and auto shots: %g degrees off the front, %g degrees up",
-        self.viewAngle or self.VIEW_ANGLE, self.viewElevation or self.VIEW_ELEVATION)
+    return string.format("View for colors and auto shots: %g degrees off the front, %g degrees up%s",
+        self.viewAngle or self.VIEW_ANGLE, self.viewElevation or self.VIEW_ELEVATION,
+        self.viewDistance ~= nil and string.format(", %g times as far (more around it)", self.viewDistance) or "")
 end
 
 -- One camera position: `angle` around the target (radians, world), `elevation` degrees up
@@ -1115,7 +1135,14 @@ function SS:start(kind, shots, folder, opts)
     if opts.colorVehicle ~= nil then
         self:setVehicleVisible(self.session, false)
     end
-    if not opts.keepHud then self:setQuiet(true) end   -- UI shots and render bursts keep everything
+    if not opts.keepHud then
+        self:setQuiet(true)
+    elseif kind == "ui" then
+        -- everything muted, but back on while the game draws its menus (Gui.draw): the menu and
+        -- the photographed mod's own box stay; other mods' labels, key boxes and the HUD go
+        self:setQuiet(true, false, folder)
+        self.guiThrough = true
+    end
     self.queue = shots
     self:nextShot()
     return true
@@ -2085,15 +2112,26 @@ function SS:checkPendingPage()
         self.pendingPage = nil
         self.menuFailed = pp.name
         -- why not: the page's own "enabled" check, wherever the menu keeps it
-        local enabled = "?"
-        for _, v in pairs(menu) do
+        local enabled, where, off = "?", "-", {}
+        for k, v in pairs(menu) do
             if type(v) == "table" and type(rawget(v, pp.frame)) == "function" then
                 local ok, e = pcall(rawget(v, pp.frame))
-                enabled = ok and tostring(e) or "error"
+                enabled, where = ok and tostring(e) or "error", tostring(k)
+                for _, p in ipairs(self:menuPages()) do
+                    local f = rawget(v, p.frame)
+                    if type(f) == "function" then
+                        local pok, pe = pcall(f)
+                        if pok and pe == false then table.insert(off, p.name) end
+                    end
+                end
             end
         end
-        log("In-game menu: page %s didn't open (its enabled check says %s; a mod's page may only be on in some cases)",
-            pp.name, enabled)
+        local current = "?"
+        for _, p in ipairs(self:menuPages()) do
+            if menu.currentPage == p.frame then current = p.name end
+        end
+        log("In-game menu: page %s didn't open (its enabled check in menu.%s says %s; the menu is on %s; pages off now: %s)",
+            pp.name, where, enabled, current, #off > 0 and table.concat(off, ", ") or "none")
     end
 end
 
@@ -2150,6 +2188,55 @@ function SS:consoleMenu(...)
     return ok and ("Opened " .. hit) or ("Opening " .. hit .. " failed: " .. tostring(err))
 end
 
+-- ssTab controls / ssTab 3: a tab of the open in-game menu page (Settings: General, Controls, ...),
+-- through the page's tab row (subCategoryPaging); a name that matches nothing lists the tabs
+function SS:consoleTab(...)
+    local want = table.concat({ ... }, " ")
+    -- the open screen when it has pages of its own (SettingsScreen), else the in-game menu
+    local screen = g_gui ~= nil and g_gui.currentGui ~= nil and g_gui.currentGui.target or nil
+    local menu = (type(screen) == "table" and screen.pageFrames ~= nil) and screen or self:inGameMenu()
+    local page = menu ~= nil and menu.currentPage or nil
+    if page == nil then return "No menu page open" end
+    -- 1. the page's own tab row (Settings: General, Display, Controls, ...)
+    local paging = page.subCategoryPaging
+    local texts = {}
+    if type(paging) == "table" and paging.setState ~= nil then
+        for i, text in ipairs(paging.texts or {}) do texts[i] = tostring(text) end
+        local index = tonumber(want)
+        if index == nil and want ~= "" then
+            for i, text in ipairs(texts) do
+                if index == nil and text:lower():find(want:lower(), 1, true) then index = i end
+            end
+        end
+        if index ~= nil then
+            local ok, err = pcall(paging.setState, paging, index, true)
+            return ok and ("Tab " .. tostring(texts[index] or index)) or ("Switching the tab failed: " .. tostring(err))
+        end
+    end
+    -- 2. a page of the screen by name
+    local known = {}
+    for _, tbl in ipairs({ g_gui.frames or {}, g_gui.guis or {} }) do
+        for n, gui in pairs(tbl) do
+            if type(gui) == "table" then
+                known[gui] = known[gui] or n
+                if type(gui.target) == "table" then known[gui.target] = known[gui.target] or n end
+            end
+        end
+    end
+    local pages = {}
+    for i, f in ipairs(menu.pageFrames or {}) do
+        local frame = type(f) == "table" and f.element ~= nil and f.element or f
+        local name = tostring(known[frame] or (type(frame) == "table" and (frame.name or frame.pageName)) or ("page " .. i))
+        table.insert(pages, name)
+        if want ~= "" and name:lower():find(want:lower(), 1, true) and menu.goToPage ~= nil then
+            local ok, err = pcall(menu.goToPage, menu, frame)
+            return ok and ("Page " .. name) or ("Going to the page failed: " .. tostring(err))
+        end
+    end
+    if #texts == 0 and #pages == 0 then return "This page has no tabs" end
+    return "Tabs: " .. table.concat(texts, ", ") .. (#pages > 0 and (" | pages: " .. table.concat(pages, ", ")) or "")
+end
+
 -- ssType tractor: the text straight into a text field of the open screen or dialog, no keyboard (a
 -- search box like Searchables' reads its field every frame, so it searches at once). One whose id has
 -- "search" in it wins, else the first visible one; a dialog before the screen under it.
@@ -2176,17 +2263,98 @@ function SS:findTextFields()
     return found
 end
 
+-- ssType qty 20000: when the first word is part of a field's id and more words follow, into that field
 function SS:consoleType(...)
-    local text = table.concat({ ... }, " ")
+    local words = { ... }
+    local text = table.concat(words, " ")
     local fields = self:findTextFields()
     if #fields == 0 then return "No text field on this screen" end
     local field = fields[1]
     for _, f in ipairs(fields) do
         if tostring(f.id or ""):lower():find("search", 1, true) then field = f; break end
     end
+    if #words >= 2 then
+        local key = tostring(words[1]):lower()
+        for _, f in ipairs(fields) do
+            if tostring(f.id or ""):lower():find(key, 1, true) then
+                field = f
+                text = table.concat(words, " ", 2)
+                break
+            end
+        end
+    end
     local ok, err = pcall(field.setText, field, text)
     if not ok then return "Writing into the text field failed: " .. tostring(err) end
     return string.format("Typed '%s' into %s", text, tostring(field.id or "a text field"))
+end
+
+-- ssClick incoming / ssClick new: a button of the open dialog (else screen) by its text, else its id,
+-- as if clicked (a page's own tabs, New, ...). Only what shows: hidden pages and their buttons are skipped.
+local function elementText(e)
+    if type(e.getText) == "function" then
+        local ok, t = pcall(e.getText, e)
+        if ok and type(t) == "string" then return t end
+    end
+    return type(e.text) == "string" and e.text or ""
+end
+
+function SS:findButtons()
+    local found, seen, roots = {}, {}, {}
+    if g_gui == nil then return found end
+    local dialogs = g_gui.dialogs or {}
+    for i = #dialogs, 1, -1 do table.insert(roots, dialogs[i]) end
+    if g_gui.currentGui ~= nil then table.insert(roots, g_gui.currentGui) end
+    local function walk(e, depth, root)
+        if type(e) ~= "table" or seen[e] or depth > 30 or e.visible == false then return end
+        seen[e] = true
+        if type(e.onClickCallback) == "function" then table.insert(found, { e = e, root = root }) end
+        for _, c in ipairs(e.elements or {}) do walk(c, depth + 1, root) end
+    end
+    for i, r in ipairs(roots) do walk(r, 0, i) end
+    return found
+end
+
+function SS:consoleClick(...)
+    local want = table.concat({ ... }, " ")
+    local buttons = self:findButtons()
+    if want == "" then
+        local names = {}
+        for _, b in ipairs(buttons) do
+            local t = elementText(b.e)
+            table.insert(names, t ~= "" and t or tostring(b.e.id or "?"))
+        end
+        return #names > 0 and ("Buttons: " .. table.concat(names, ", ")) or "No buttons on this screen"
+    end
+    local w = want:lower()
+    local hit
+    -- the topmost dialog first; in it: the whole text, then part of it, then the id
+    for pass = 1, 3 do
+        for _, b in ipairs(buttons) do
+            if hit == nil then
+                local t, id = elementText(b.e):lower(), tostring(b.e.id or ""):lower()
+                if (pass == 1 and t == w) or (pass == 2 and t:find(w, 1, true)) or (pass == 3 and id:find(w, 1, true)) then
+                    hit = b
+                end
+            end
+        end
+        if hit ~= nil then break end
+    end
+    if hit == nil then return "No button '" .. want .. "' here: ssClick lists them" end
+    local e = hit.e
+    if e.getIsDisabled ~= nil then
+        local ok, off = pcall(e.getIsDisabled, e)
+        if ok and off then return "The button '" .. want .. "' is disabled" end
+    end
+    local ok, err
+    if type(e.raiseCallback) == "function" then
+        ok, err = pcall(e.raiseCallback, e, "onClickCallback", e)
+    elseif e.target ~= nil then
+        ok, err = pcall(e.onClickCallback, e.target, e)
+    else
+        ok, err = pcall(e.onClickCallback, e)
+    end
+    local label = elementText(e) ~= "" and elementText(e) or tostring(e.id or want)
+    return ok and ("Clicked " .. label) or ("Clicking " .. label .. " failed: " .. tostring(err))
 end
 
 -- ssKeys ctrl+f tractor enter: the game can't press its own keys, so in an autorun this is a note for
@@ -2399,7 +2567,7 @@ end
 SS.AUTORUN_FILE = "autorun.xml"
 SS.AUTORUN_MAX_AGE = 20       -- minutes
 SS.AUTORUN_START_S = 10       -- after the save is running: let the map stream in
-SS.AUTORUN_PAUSE = { ssLight = 3, ssGolden = 3, ssEnter = 8, ssMove = 6, ssMenu = 2, ssKeys = 4, ssType = 2 }   -- seconds after these steps; others 1
+SS.AUTORUN_PAUSE = { ssLight = 3, ssGolden = 3, ssEnter = 8, ssMove = 6, ssMenu = 2, ssKeys = 4, ssType = 2, ssTab = 2, ssClick = 2 }   -- seconds after these steps; others 1
 
 -- "20261112_183000" -> minutes since a fixed day (only differences matter)
 local function stampMinutes(stamp)
@@ -2517,7 +2685,9 @@ SS.COMMANDS = {
     { "ssMove", "The machine with what is hitched to it to your spot or an open, flat place; [back] = where it was", "consoleMove" },
     { "ssEnter", "Get into the target, the nearest vehicle, or the one whose name contains [name]; outside camera", "consoleEnter" },
     { "ssMenu", "Open a screen, dialog or in-game menu page by (part of) its name: [name]; empty = list them; close", "consoleMenu" },
-    { "ssType", "Write [text] into the text field of the open screen (a search box), no keyboard", "consoleType" },
+    { "ssTab", "A tab of the open in-game menu page by name or number (Settings: controls); empty = list them", "consoleTab" },
+    { "ssType", "Write [text] into the text field of the open screen (a search box), no keyboard; [field] [text] into that one", "consoleType" },
+    { "ssClick", "Click a button of the open dialog or screen by its text or id (a page's tabs, New); empty = list them", "consoleClick" },
     { "ssKeys", "For the runner: keys to type into the game, e.g. ctrl+f tractor enter (the runner types them)", "consoleKeys" },
     { "ssFolder", "Folder name for the next shots, empty = automatic", "consoleFolder" },
     { "ssQuiet", "Hide other mods' drawing (Courseplay, AutoDrive, hints) during shots: on/off", "consoleQuiet" },
@@ -2566,6 +2736,18 @@ end
 -- An open menu can stop the mission's update and draw, but the GUI updates every frame: the UI
 -- shot's countdown runs from there too. tick() only acts when its time has come, so being called
 -- more than once a frame does nothing extra.
+-- UI shots: while the game draws its menus, the drawing functions work (see setQuiet)
+if Gui ~= nil and Gui.draw ~= nil then
+    local guiDraw = Gui.draw
+    Gui.draw = function(gui, ...)
+        if SS.muted == nil or not SS.guiThrough then return guiDraw(gui, ...) end
+        SS:setMuted(false, true)
+        local ok, err = pcall(guiDraw, gui, ...)
+        SS:setMuted(true, true)
+        if not ok then error(err, 0) end
+    end
+end
+
 if Gui ~= nil and Gui.update ~= nil then
     Gui.update = Utils.appendedFunction(Gui.update, function()
         SS:tick()

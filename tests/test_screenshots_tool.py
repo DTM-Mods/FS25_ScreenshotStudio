@@ -83,12 +83,12 @@ code, out = run("pick", repo, studio, str(n["ui_20261112_120100_01.png"]), str(n
                 str(n["burst_20261112_120200_01.png"]))
 check(code == 0, "pick exits 0 even when check complains")
 code, out = run("check", repo)
-check(code == 1 and "01.jpg is a ui shot" in out, "check: a UI shot as 01 breaks the rule")
-check("in action: 03.jpg" in out, "check: the burst shot counts as in action")
+check(code == 1 and "1.jpg is a ui shot" in out, "check: a UI shot as 01 breaks the rule")
+check("in action: 3.jpg" in out, "check: the burst shot counts as in action")
 def comment(name):
     with Image.open(os.path.join(repo, "screenshots", name)) as im:
         return tool.from_comment(im)
-meta = comment("02.jpg")
+meta = comment("2.jpg")
 check(meta == {"kind": "clean", "hud": "false", "light": "golden", "from": "clean_20261112_120000_01.png"},
       f"JPEG comment keeps what it is ({meta})")
 
@@ -100,53 +100,69 @@ code, out = run("pick", repo, studio, *(str(n[f]) for f in ["clean_20261112_1200
                 "wide_steam.jpg"]))
 code, out = run("check", repo)
 check(code == 0 and "6 screenshot(s)" in out and "- OK" in out, "check passes with a clean 01")
-check("? 02.jpg and 03.jpg look almost the same" in out, "near duplicate found")
-check("? 04.jpg: looks like a white background" in out, "white background found")
-check("? 05.jpg: very dark" in out, "dark picture found")
-check("? 01.jpg" not in out and "? 06.jpg: looks like" not in out, "no false alarms on the normal ones")
-with Image.open(os.path.join(repo, "screenshots", "06.jpg")) as im:
+check("? 2.jpg and 3.jpg look almost the same" in out, "near duplicate found")
+check("? 4.jpg: looks like a white background" in out, "white background found")
+check("? 5.jpg: very dark" in out, "dark picture found")
+check("? 1.jpg" not in out and "? 6.jpg: looks like" not in out, "no false alarms on the normal ones")
+with Image.open(os.path.join(repo, "screenshots", "6.jpg")) as im:
     check(im.size == (1920, 1080), "ultrawide cropped to 1920x1080")
-check(comment("06.jpg") == {"from": "wide_steam.jpg"},
+check(comment("6.jpg") == {"from": "wide_steam.jpg"},
       "a picture from elsewhere only knows where it came from")
 
 # --- captions: text on a picture, within the ModHub rules; the original kept
 shots = os.path.join(repo, "screenshots")
-with open(os.path.join(shots, "02.jpg"), "rb") as f:
+with open(os.path.join(shots, "2.jpg"), "rb") as f:
     before = f.read()
 code, out = run("caption", repo, "2", "Robot feeding", "The robot fills all four troughs on its own, every hour.")
-with Image.open(os.path.join(shots, "02.jpg")) as im:
+with Image.open(os.path.join(shots, "2.jpg")) as im:
     im.load(); after = im.copy(); meta = tool.from_comment(im)
-with Image.open(os.path.join(shots, "originals", "02.jpg")) as im:
+with Image.open(os.path.join(shots, "originals", "2.jpg")) as im:
     im.load(); orig = im.copy()
 diff_bottom = sum(abs(a - b) for a, b in zip(after.crop((0, 1000, 1920, 1080)).tobytes(), orig.crop((0, 1000, 1920, 1080)).tobytes()))
 diff_top = sum(abs(a - b) for a, b in zip(after.crop((0, 0, 1920, 200)).tobytes()[:30000], orig.crop((0, 0, 1920, 200)).tobytes()[:30000]))
 check(code == 0 and diff_bottom > 1000000 and diff_top < 30000 * 3, f'caption: a band at the bottom, the rest of the picture as it was ({diff_bottom}, {diff_top})')
 check(meta.get("caption") == "yes" and meta.get("kind") == "burst", f"the JPEG comment still says what it is, and that it has a caption ({meta})")
 import json
-check(json.load(open(os.path.join(shots, "captions.json")))["02.jpg"]["title"] == "Robot feeding", "listed in captions.json")
+check(json.load(open(os.path.join(shots, "captions.json")))["2.jpg"]["title"] == "Robot feeding", "listed in captions.json")
 code, out = run("caption", repo, "2", "Robot feeding at night")
-with Image.open(os.path.join(shots, "originals", "02.jpg")) as im:
+with Image.open(os.path.join(shots, "originals", "2.jpg")) as im:
     im.load(); still = im.copy()
 check(code == 0 and still.tobytes() == orig.tobytes(), "a new caption is drawn on the original, not on the old caption")
-for args, why in [(("1", "Hero shot"), "01 must have no text"), (("3", "See dtmmods.com"), "a link"),
+for args, why in [(("1", "Hero shot"), "picture 1 must have no text"), (("3", "See dtmmods.com"), "a link"),
                   (("3", "New in v1.2"), "a version number"), (("3", "Made by Fennell"), "credits"),
                   (("3", "Schweinestall für 400 Tiere"), "aren't English")]:
     code, out = run("caption", repo, *args)
     check(code == 1 and why in out and "Not written" in out, f"refused: {args[1]!r} ({why})")
 code, out = run("caption", repo, "1", "Mehr auf dtmmods.com", "--site")
-check(code == 0 and os.path.isfile(os.path.join(shots, "site", "01.jpg")) and not os.path.isfile(os.path.join(shots, "originals", "01.jpg")) is False,
+check(code == 0 and os.path.isfile(os.path.join(shots, "site", "1.jpg")) and not os.path.isfile(os.path.join(shots, "originals", "1.jpg")) is False,
       "--site: a dtmmods.com copy with any text, ModHub's 01 untouched")
-with Image.open(os.path.join(shots, "01.jpg")) as im:
+with Image.open(os.path.join(shots, "1.jpg")) as im:
     check(tool.from_comment(im).get("caption") is None, "01 itself has no caption")
 code, out = run("check", repo)
-check(code == 0 and "02.jpg  caption: Robot feeding at night" in out, "check lists the captions")
-json.dump({"01.jpg": {"title": "Hero"}}, open(os.path.join(shots, "captions.json"), "w"))
+check(code == 0 and "2.jpg  caption: Robot feeding at night" in out, "check lists the captions")
+json.dump({"1.jpg": {"title": "Hero"}}, open(os.path.join(shots, "captions.json"), "w"))
 code, out = run("check", repo)
-check(code == 1 and "01.jpg caption: 01 must have no text" in out, "check: a caption on 01 breaks the rule")
-json.dump({"02.jpg": {"title": "Robot feeding at night"}}, open(os.path.join(shots, "captions.json"), "w"))
+check(code == 1 and "1.jpg caption: picture 1 must have no text" in out, "check: a caption on 01 breaks the rule")
+json.dump({"2.jpg": {"title": "Robot feeding at night"}}, open(os.path.join(shots, "captions.json"), "w"))
 code, out = run("caption", repo, "2", "--clear")
-with open(os.path.join(shots, "02.jpg"), "rb") as f:
+with open(os.path.join(shots, "2.jpg"), "rb") as f:
     check(f.read() == before and not os.path.isfile(os.path.join(shots, "captions.json")), "--clear: the original back, byte for byte")
+
+# --- renumber: 01.jpg, 02.jpg (older picks) -> 1.jpg, 2.jpg, with originals and captions
+old = os.path.join(tmp, "old", "FS25_Old")
+os.makedirs(os.path.join(old, "screenshots", "originals"))
+for n in ("01", "02", "10"):
+    scene(os.path.join(old, "screenshots", f"{n}.jpg"), int(n))
+scene(os.path.join(old, "screenshots", "originals", "02.jpg"), 2)
+json.dump({"02.jpg": {"title": "Old caption"}}, open(os.path.join(old, "screenshots", "captions.json"), "w"))
+code, out = run("renumber", old)
+names = sorted(os.listdir(os.path.join(old, "screenshots")))
+check(code == 0 and names == ["1.jpg", "10.jpg", "2.jpg", "captions.json", "originals"]
+      and os.listdir(os.path.join(old, "screenshots", "originals")) == ["2.jpg"]
+      and list(json.load(open(os.path.join(old, "screenshots", "captions.json")))) == ["2.jpg"],
+      f"renumber: plain numbers, originals and captions too ({names})")
+check([os.path.basename(f) for f in tool.numbered(os.path.join(old, "screenshots")).values()] == ["1.jpg", "2.jpg", "10.jpg"],
+      "in number order: 2 before 10")
 
 # --- 01 not from the studio, and fewer than 3
 shutil.rmtree(os.path.join(repo, "screenshots"))

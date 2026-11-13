@@ -130,7 +130,7 @@ InputAction = { SS_CLEAN_SHOT = 1, SS_ORBIT = 2, SS_UI_SHOT = 3, SS_GOLDEN_HOUR 
 T.actions = {}
 g_inputBinding = { registerActionEvent = function(self, a, target, cb) T.actions[a] = cb; return true, a end,
                    setActionEventTextVisibility = function() end }
-Gui = { update = function() end }
+Gui = { update = function() end, draw = function(self) renderText(); FS25_Courseplay.renderText() end }   -- the menus draw through the game (and a mod's copy inside)
 FSBaseMission = { INGAME_NOTIFICATION_OK = 1 }
 g_cameraManager = { active = 999, cams = {},
     addCamera = function(self, c) self.cams[c] = true end,
@@ -268,7 +268,7 @@ def shots_in(values):
     return out
 
 SS.loadMap(SS)
-names = ['ssShot', 'ssView', 'ssClear', 'ssOrbit', 'ssUi', 'ssBurst', 'ssColors', 'ssLight', 'ssGolden', 'ssTarget', 'ssList', 'ssSpot', 'ssMove', 'ssEnter', 'ssMenu', 'ssType', 'ssKeys', 'ssFolder', 'ssQuiet', 'ssRadius', 'ssProbe', 'ssMethod']
+names = ['ssShot', 'ssView', 'ssClear', 'ssOrbit', 'ssUi', 'ssBurst', 'ssColors', 'ssLight', 'ssGolden', 'ssTarget', 'ssList', 'ssSpot', 'ssMove', 'ssEnter', 'ssMenu', 'ssTab', 'ssType', 'ssKeys', 'ssFolder', 'ssQuiet', 'ssRadius', 'ssProbe', 'ssMethod']
 check(all(T.commands[c] is not None for c in names), 'console commands registered')
 G.PlayerInputComponent.registerGlobalPlayerActionEvents(None)
 check(all(T.actions[i] is not None for i in range(1, 7)), 'six key actions registered')
@@ -482,6 +482,14 @@ lua.execute('function T.roller:getIsUnfolded() return false end')
 folded = pos_of(SS.viewOf(SS, G.T.roller))
 check(in_frame(folded, box_only) > 0.75, f'folded: the work areas (still at full width on the frame) do not count, the roller fills the picture ({in_frame(folded, box_only):.2f})')
 lua.execute('T.roller.getIsUnfolded = nil')
+SS.consoleView(SS, '35', '50')
+near = pos_of(SS.viewOf(SS, T.implement))
+msg = SS.consoleView(SS, '35', '50', '3')
+far = pos_of(SS.viewOf(SS, T.implement))
+check(abs(math.dist(far[:3], far[3:]) / math.dist(near[:3], near[3:]) - 3) < 0.01 and '3 times as far' in msg,
+      f'ssView 35 50 3: three times as far, the surroundings in the picture ({msg})')
+SS.consoleView(SS, '')
+check(SS.viewDistance is None, 'ssView alone: back to normal')
 SS.consoleView(SS, '')
 t = SS.getOrbitTarget(SS)
 group_corners = SS.cornersOf(SS, SS.getVehicleGroup(SS).list)
@@ -632,13 +640,19 @@ check(lua.eval('rawget(_G, "drawFilledRect")') is None, 'a metatable function is
 check(T.drawn == 6 and ad.lines == 1 and same(G.renderText, T.originalRenderText) and same(G.FS25_Courseplay.renderText, T.cpRenderText) and SS.muted is None,
       'after the batch: all drawing back')
 SS.consoleUi(SS, '1')
+ad_before = ad.lines
 T.otherModsDraw()
-check(T.drawn == 12, 'UI shot: other mods stay on screen')
+outside = T.drawn
+G.Gui.draw(G.Gui)
+in_menu = T.drawn
+T.otherModsDraw()
+check(outside == 6 and in_menu == 7 and T.drawn == 7 and ad.lines == ad_before,
+      f'UI shot: nothing drawn outside the menus (labels, key boxes, HUD), the menu itself draws ({outside}, {in_menu}, {T.drawn})')
 run(2)
 check(SS.consoleQuiet(SS, 'off').endswith('shown'), 'ssQuiet off')
 SS.consoleShot(SS)
 T.otherModsDraw()
-check(T.drawn == 18, 'ssQuiet off: nothing muted')
+check(T.drawn == 13, 'ssQuiet off: nothing muted')
 run(2)
 SS.consoleQuiet(SS, 'on')
 SS.consoleShot(SS)
@@ -918,7 +932,7 @@ lua.execute('T.blocked = T.uwm; T.menu.currentPage = T.mapFrame; T.menu.enabled 
 T.logs = lua.table_from([])
 SS.consoleMenu(SS, 'uwm')
 for _ in range(35): G.Gui.update()
-check(SS.pendingPage is None and any("page UWMFrame didn't open (its enabled check says false" in l for l in lua_list(T.logs)),
+check(SS.pendingPage is None and any("page UWMFrame didn't open (its enabled check in menu.enabled says false; the menu is on InGameMenuMapFrame; pages off now: UWMFrame)" in l for l in lua_list(T.logs)),
       'a page that stays off: the log says so, with its enabled check')
 # in an autorun, a UI shot after a page that didn't open is skipped
 SS.autorun = lua.table_from({'steps': lua.table_from([]), 'index': 0, 'nextAt': 0, 'pictures': 0})
@@ -949,6 +963,56 @@ check(SS.consoleType(SS, 'tractor') == "Typed 'tractor' into searchablesInput" a
       'ssType: into the visible field whose id says search, deep in the screen')
 lua.execute('T.search.visible = false')
 check(SS.consoleType(SS, 'big', 'pack') == "Typed 'big pack' into nameInput", 'no search field: the first visible one, words joined')
+lua.execute('T.qty = T.search; T.qty.id = "qtyInput"; T.qty.visible = true; T.qty.text = ""')
+check(SS.consoleType(SS, 'qty', '20000') == "Typed '20000' into qtyInput" and G.T.qty.text == '20000' and G.T.other.text == 'big pack',
+      'ssType qty 20000: the first word names the field (part of its id), the rest goes in')
+# ssClick: a button of the open dialog or screen by its text, else its id (a page's own tabs, New)
+lua.execute("""
+T.clicked = {}
+local function button(id, text, visible, disabled)
+    local b = { id = id, text = text, visible = visible, target = { name = "frame" } }
+    function b.onClickCallback(target, el) table.insert(T.clicked, target.name .. ":" .. el.id) end
+    function b:getIsDisabled() return disabled == true end
+    function b:raiseCallback(name, ...) return self[name](self.target, ...) end
+    return b
+end
+T.hiddenPage = { visible = false, elements = { button("otherTab", "Incoming", true) } }
+T.page = { elements = { button("mainTabs[1]", "Incoming", true), button("mainTabs[2]", "Outgoing", true),
+    button("newButton", "New", true), button("clearButton", "", true), button("offButton", "Pay", true, true) } }
+g_gui.currentGui = { elements = { T.hiddenPage, T.page } }
+""")
+check(SS.consoleClick(SS, 'outgoing') == 'Clicked Outgoing' and lua_list(G.T.clicked) == ['frame:mainTabs[2]'],
+      'ssClick outgoing: the button with that text, its callback on its target')
+check(SS.consoleClick(SS, 'Incoming') == 'Clicked Incoming' and lua_list(G.T.clicked)[-1] == 'frame:mainTabs[1]',
+      'a hidden page and its buttons are skipped')
+check(SS.consoleClick(SS, 'clear') == 'Clicked clearButton' and lua_list(G.T.clicked)[-1] == 'frame:clearButton', 'no text: by its id')
+check(SS.consoleClick(SS, 'pay') == "The button 'pay' is disabled" and len(lua_list(G.T.clicked)) == 3, 'a disabled button is not clicked')
+check(SS.consoleClick(SS, 'nothing') == "No button 'nothing' here: ssClick lists them"
+      and SS.consoleClick(SS) == 'Buttons: Incoming, Outgoing, New, clearButton, Pay', 'unknown: ssClick alone lists them')
+lua.execute("""
+T.dialog = { elements = { { id = "yesButton", text = "New", target = { name = "dialog" },
+    onClickCallback = function(target, el) table.insert(T.clicked, target.name .. ":" .. el.id) end } } }
+g_gui.dialogs = { T.dialog }
+""")
+check(SS.consoleClick(SS, 'new') == 'Clicked New' and lua_list(G.T.clicked)[-1] == 'dialog:yesButton',
+      'an open dialog comes before the screen under it (no raiseCallback: called directly)')
+lua.execute('g_gui.dialogs = {}')
+lua.execute('g_gui.currentGui = { elements = {} }')
+# ssTab: a tab of the open page (Settings > Controls)
+lua.execute("""
+T.settings = { subCategoryPaging = { texts = { "General", "Display", "Controls" }, state = 1 } }
+function T.settings.subCategoryPaging:setState(i, force) self.state = i; T.tabForced = force end
+T.menu.currentPage = T.settings
+""")
+check(SS.consoleTab(SS, 'controls') == 'Tab Controls' and G.T.settings.subCategoryPaging.state == 3 and G.T.tabForced is True,
+      'ssTab controls: the page switches to its Controls tab (with the change event)')
+check(SS.consoleTab(SS, 'nothing') == 'Tabs: General, Display, Controls | pages: InGameMenuMapFrame, UWMFrame'
+      and SS.consoleTab(SS, '2') == 'Tab Display', 'ssTab: a wrong name lists the tabs and pages, a number works')
+lua.execute('T.menu.currentPage = T.mapFrame')
+check(SS.consoleTab(SS, 'uwm') == 'Page UWMFrame' and same(G.T.menu.currentPage, G.T.uwm), 'ssTab uwm: no tab row, a page of the screen by name')
+lua.execute('T.settingsScreen = { pageFrames = { T.settings }, currentPage = T.settings }; function T.settingsScreen:goToPage(f) self.currentPage = f end')
+lua.execute('g_gui.currentGui = { target = T.settingsScreen }')
+check(SS.consoleTab(SS, 'controls') == 'Tab Controls', 'ssTab on the open screen (SettingsScreen), not only the in-game menu')
 lua.execute('g_gui.currentGui = { elements = {} }')
 check(SS.consoleType(SS, 'x') == 'No text field on this screen', 'no field at all')
 

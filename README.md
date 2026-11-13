@@ -66,9 +66,9 @@ The keys can be changed in Options > Controls (Right Ctrl + 4 is still called `S
    ```
    ![A numbered contact sheet of the Pig Barn pictures](docs/images/sheet_pigbarn.jpg)
 
-   `pick` puts them into the repo's `screenshots/` folder as `01.jpg`, `02.jpg`, ... in the order you give: **the first one is the clean hero shot** (no HUD, no text). The repo can be a path or just its name: the tool finds the folder of that name (with a `modDesc.xml`) under `C:\Programming\fs2025`. What the mod knows about each picture (kind, HUD, light, color) goes into the JPEG's comment.
+   `pick` puts them into the repo's `screenshots/` folder as `1.jpg`, `2.jpg`, ... in the order you give: **the first one is the clean hero shot** (no HUD, no text). Folders picked before, with `01.jpg`, `02.jpg`, ...: `python tools/fs25_screenshots.py renumber <repo>` renames them (with the originals and captions). The repo can be a path or just its name: the tool finds the folder of that name (with a `modDesc.xml`) under `C:\Programming\fs2025`. What the mod knows about each picture (kind, HUD, light, color) goes into the JPEG's comment.
 6. `python tools/fs25_screenshots.py check <repo>`:
-   - `!` breaks a rule (exit code 1): fewer than 3, not 1920x1080, `01` is a UI shot or has the HUD
+   - `!` breaks a rule (exit code 1): fewer than 3, not 1920x1080, picture 1 is a UI shot or has the HUD
    - `?` is worth a look: no burst ("in action") shot among them, white background, two that look almost the same, too dark, washed out
    - `studio <folder>` and the contact sheet show the same labels (`orbit, golden`, `color Red`, `ui, HUD`)
 
@@ -111,7 +111,9 @@ python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 1 "More on dtmmod
 
 ![An example caption on a Pig Barn picture](docs/images/caption_example.jpg)
 
-A dark band with a heading and wrapped text goes across the bottom (`--at top`: the top). The untouched picture is kept in `screenshots/originals/` and every caption is drawn on it afresh, so a caption can be changed any time without text piling up; `screenshots/captions.json` lists them. The tool refuses a caption on 01 and one with a link, a version number, credits ("made by", ©) or letters that aren't English, and `check` says the same. `--site` writes a copy for dtmmods.com in `screenshots/site/NN.jpg`, where none of these rules apply, and leaves the ModHub picture as it is.
+A dark band with a heading and wrapped text goes across the bottom (`--at top`: the top). The untouched picture is kept in `screenshots/originals/` and every caption is drawn on it afresh, so a caption can be changed any time without text piling up; `screenshots/captions.json` lists them. The tool refuses a caption on picture 1 and one with a link, a version number, credits ("made by", ©) or letters that aren't English, and `check` says the same. `--site` writes a copy for dtmmods.com in `screenshots/site/<n>.jpg`, where none of these rules apply, and leaves the ModHub picture as it is.
+
+From PowerShell, quote marks inside a caption get lost (Windows PowerShell 5.1 drops them when it starts Python): write `\"` for each, or run the command from cmd or Git Bash.
 
 ## Menus (UI shots)
 
@@ -123,7 +125,10 @@ For a script mod the pictures are its screens. **Right Ctrl + 3** (`ssUi`) waits
 | `ssMenu UWMFrame` | the in-game menu on that page (Player Trading+'s page); part of a name or the page number works too |
 | `ssMenu ShopMenu` | that screen; a name with `Dialog` opens as a dialog |
 | `ssMenu close` | closes them |
+| `ssTab controls` | a tab of the open in-game menu page (Settings: General, Controls, ...) by name or number; a name that matches nothing lists them |
 | `ssType tractor` | writes the text straight into the screen's text field (one with "search" in its id first, e.g. Searchables' box), no keyboard: Searchables searches as soon as its field changes |
+| `ssType qty 20000` | when the first word is part of a field's id and more words follow: the rest into that field |
+| `ssClick My orders` | clicks a button of the open dialog (else screen) by its text, else its id: a page's own tabs like Player Trading+'s Incoming, Outgoing, Standing orders. Only what shows; a disabled button isn't clicked; `ssClick` alone lists them |
 | `ssKeys ctrl+f tractor enter` | in an autorun: the runner types these keys into the game window (a key name or a chord with `+`, `pause` for a second, else the word letter by letter). Careful with letters the screen uses as keys: in the shop **C** opens the game's own search, so typing "tractor" there searched for "TOR"; for text use `ssType` |
 
 An open menu pauses the game, so the autorun's steps go on from the menu's own update. With the runner:
@@ -134,6 +139,10 @@ python tools/fs25_run_game.py run 1 --steps "ssFolder FS25_Searchables" "ssMenu 
 ```
 
 `--menu` (again for more) opens each menu, takes a UI shot and closes it; `--folder` is where the shots go (else `ui`).
+
+`--without-mod FS25_OldMod` (again for more) switches a mod off in the save for that run only, for one that clashes with the mod you photograph; the mod list is put back afterwards. Player Trading+ and its old version Utilities & Waste Management both keep their hooks in the same fields of the game's classes: with both on, the old one wins and Player Trading+ has no ESC page.
+
+A menu needs something in it to be worth a picture. For Player Trading+ that's a save with more than one farm and a few trades: a copy of your save in an empty slot with neighbour farms and invoices added works (the runner's save backup keeps it as it was).
 
 ## How the pictures are taken
 
@@ -186,7 +195,7 @@ Where to: `ssSpot` saves where you stand and the way you look as the place for t
 
 ## Other mods on the screen
 
-Hiding the HUD leaves what other mods draw themselves: Courseplay's bar, AutoDrive's route lines and labels, the game's hint boxes ("Please start the engine first!"; `ssEnter` also starts the engine, so that one doesn't come up). The log says once per game what was muted (`Quiet: ...`). During a batch (not UI shots, not a burst with the HUD kept) the game's 2D and debug drawing functions draw nothing, for the game and every mod, and AutoDrive is given no lines to draw, so it hides them itself. Everything comes back when the batch ends (and the mod checks every frame that it did). `ssQuiet off` leaves other mods in the pictures, e.g. to show a mod's own display. Not covered: 3D objects a mod puts into the world, like Courseplay's course signs when its course display is on; switch those off in that mod.
+Hiding the HUD leaves what other mods draw themselves: Courseplay's bar, AutoDrive's route lines and labels, the game's hint boxes ("Please start the engine first!"; `ssEnter` also starts the engine, so that one doesn't come up). The log says once per game what was muted (`Quiet: ...`). During a batch (not UI shots, not a burst with the HUD kept) the game's 2D and debug drawing functions draw nothing, for the game and every mod, and AutoDrive is given no lines to draw, so it hides them itself. Everything comes back when the batch ends (and the mod checks every frame that it did). UI shots too: there everything is muted the same way, except while the game draws its menus (`Gui.draw`), so the menu, its search box and the map with its arrows stay, while other mods' labels, key boxes and the HUD over the 3D view go (the construction screen showed AutoDrive's labels before). `ssQuiet off` leaves other mods in the pictures, e.g. to show a mod's own display. Not covered: 3D objects a mod puts into the world, like Courseplay's course signs when its course display is on; switch those off in that mod.
 
 ![The same view with Courseplay's bar and AutoDrive's labels, and with them hidden](docs/images/quiet_apache.jpg)
 
@@ -219,7 +228,9 @@ Every batch writes `_shots_<time>_<kind>.xml` next to its pictures: per picture 
 | `ssMove [back]` | the machine with what's hitched to your spot or an open, flat place; `back`: where it was (see "Moving it to a better place") |
 | `ssSpot [clear]` | here, the way you look, is where `ssMove` puts machines on this map; `clear` forgets it |
 | `ssMenu [name\|close]` | opens a screen, dialog or in-game menu page; empty = list them (see "Menus") |
-| `ssType <text>` | writes the text into the open screen's text field (a search box) |
+| `ssTab [name\|number]` | a tab of the open in-game menu page |
+| `ssType [field] <text>` | writes the text into the open screen's text field (a search box), or the one whose id has `field` in it |
+| `ssClick [text]` | clicks a button of the open dialog or screen by its text or id; empty = list them |
 | `ssKeys <keys>` | in an autorun: keys for the runner to type into the game |
 | `ssFolder [name]` | folder for the next shots (e.g. `FS25_Searchables` for UI shots); empty = automatic |
 | `ssQuiet [on\|off]` | other mods' drawing hidden during shots (on) or left in (off); empty = switch |

@@ -209,6 +209,23 @@ check(rg.with_target(["ssEnter", "ssTarget x", "ssOrbit", "quit"], " PX150 XL ")
 check(all(p[-1] == "quit" and p[0] == "ssEnter" for p in rg.PLANS.values()) and set(rg.PLANS) == set(rg.PLAN_TEXT),
       "every plan gets in first and quits at the end")
 
+# --without-mod: a clashing mod off for one run, the mod list put back from the backup
+cx = os.path.join(tmp, "wm")
+os.makedirs(cx)
+cfile = os.path.join(cx, "careerSavegame.xml")
+original = ('<careerSavegame>\n    <mod modName="FS25_A" title="A" version="1"/>\n'
+            '    <mod modName="FS25_UtilitiesWasteManagement" title="U &amp; W" version="0.10.0.0" required="false"/>\n'
+            '    <mod modName="FS25_B" title="B"/>\n</careerSavegame>\n')
+open(cfile, "w", encoding="utf-8", newline="").write(original)
+bz, _ = rg.backup(cx, work=work, stamp="W")
+gone = rg.without_mods(cfile, ["fs25_utilitieswastemanagement", "FS25_Nope"])
+after = open(cfile, encoding="utf-8").read()
+check(gone == ["FS25_UtilitiesWasteManagement"] and "Utilities" not in after and 'modName="FS25_A"' in after
+      and 'modName="FS25_B"' in after and after.count("\n") == 4, f"--without-mod removes only that mod's line ({gone})")
+check(rg.without_mods(cfile, None) == [] and rg.without_mods(cfile, ["FS25_Nope"]) == [], "nothing asked or not there: nothing removed")
+rg.put_back(cx, bz, "careerSavegame.xml")
+check(open(cfile, encoding="utf-8").read() == original, "mod list put back from the backup")
+
 shutil.rmtree(tmp, ignore_errors=True)
 print()
 print('All passed' if not failures else f'{len(failures)} failed')

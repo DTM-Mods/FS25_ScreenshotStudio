@@ -7,19 +7,20 @@
     python fs25_screenshots.py check  <repo>
     python fs25_screenshots.py new    [--since YYYY-MM-DD]        your newest game/Steam screenshots
     python fs25_screenshots.py caption <repo> <n> "Title" ["more text"] [--at top] [--clear] [--site]
-                                                                  text on screenshots/NN.jpg
+                                                                  text on screenshots/<n>.jpg
+    python fs25_screenshots.py renumber <repo>                     01.jpg, 02.jpg, ... -> 1.jpg, 2.jpg, ...
 
 <repo> is a mod repo folder, or just its name (FS25_PX150XL): then the repo of that name under
 the fs2025 projects folder. <folder> is a Screenshot Studio folder name (e.g. FS25_PX150XL, from
 modSettings/FS25_ScreenshotStudio/) or any folder path. The numbers are the ones on the sheet.
 
 pick/add: crop each picture to 16:9 (ultrawide 32:9 shots: the middle, or --align left/right),
-scale it to 1920x1080 and save it as <repo>/screenshots/NN.jpg (next free number). The order is
+scale it to 1920x1080 and save it as <repo>/screenshots/<n>.jpg (1.jpg, 2.jpg, ...: next free number). The order is
 the ModHub order: pick the clean, HUD-free hero shot first. What Screenshot Studio knows about a
 picture (kind, HUD, light, color; from its _shots_*.xml) goes into the JPEG's comment, so check
 still knows it after the picture is renamed.
 
-check: at least 3 screenshots, all 1920x1080 JPG; 01 without HUD and not a menu shot; one taken
+check: at least 3 screenshots, all 1920x1080 JPG; picture 1 without HUD and not a menu shot; one taken
 while working (a burst shot); and what a script can guess from the pixels: white background, near
 duplicates, too dark or washed out. "!" breaks a rule (exit code 1), "?" is worth a look.
 
@@ -142,8 +143,7 @@ def crop_16_9(im, align):
 def add(repo, images, align, metas=None):
     out = os.path.join(repo, "screenshots")
     os.makedirs(out, exist_ok=True)
-    taken = [int(os.path.splitext(f)[0]) for f in os.listdir(out) if os.path.splitext(f)[0].isdigit()]
-    n = max(taken, default=0)
+    n = max(numbered(out), default=0)
     for i, src in enumerate(images):
         with Image.open(src) as raw:
             im = raw.convert("RGB")
@@ -154,7 +154,7 @@ def add(repo, images, align, metas=None):
         meta = dict((metas or {}).get(src) or {})
         meta["from"] = os.path.basename(src)
         n += 1
-        dst = os.path.join(out, f"{n:02d}.jpg")
+        dst = os.path.join(out, f"{n}.jpg")
         im.save(dst, "JPEG", quality=90, optimize=True, comment=to_comment(meta))
         tags = label(meta)
         print(f"{dst}  ({os.path.getsize(dst) // 1024} KB)  from {os.path.basename(src)}" + (f"  [{tags}]" if tags else ""))
@@ -172,12 +172,50 @@ def pick(repo, folder, numbers, align):
     return add(repo, chosen, align, {f: info.get(os.path.basename(f)) for f in chosen})
 
 
+def numbered(folder):
+    """{number: path} of the numbered pictures in a screenshots folder: 1.jpg, 2.jpg (or 01.jpg, 02.jpg)."""
+    out = {}
+    if os.path.isdir(folder):
+        for f in os.listdir(folder):
+            stem, ext = os.path.splitext(f)
+            if ext.lower() == ".jpg" and stem.isdigit():
+                out[int(stem)] = os.path.join(folder, f)
+    return dict(sorted(out.items()))
+
+
+def renumber(repo):
+    """01.jpg, 02.jpg, ... -> 1.jpg, 2.jpg, ... in screenshots/ and its originals/ and site/, and captions.json."""
+    out = os.path.join(repo, "screenshots")
+    moved = 0
+    for folder in (out, os.path.join(out, "originals"), os.path.join(out, "site")):
+        pics = numbered(folder)
+        temp = {}
+        for n, path in pics.items():                 # two steps: 1.jpg may exist next to 01.jpg in no case, but stay safe
+            if os.path.basename(path) != f"{n}.jpg":
+                tmp = os.path.join(folder, f"_renumber_{n}.jpg")
+                os.replace(path, tmp)
+                temp[n] = tmp
+        for n, tmp in temp.items():
+            os.replace(tmp, os.path.join(folder, f"{n}.jpg"))
+            moved += 1
+    listed = os.path.join(out, "captions.json")
+    if os.path.isfile(listed):
+        with open(listed, encoding="utf-8") as f:
+            captions = json.load(f)
+        captions = {(f"{int(os.path.splitext(k)[0])}.jpg" if os.path.splitext(k)[0].isdigit() else k): v
+                    for k, v in captions.items()}
+        with open(listed, "w", encoding="utf-8") as f:
+            json.dump(captions, f, indent=2, ensure_ascii=False)
+    print(f"{moved} picture(s) renamed in {out}")
+    return moved
+
+
 # ---------------------------------------------------------------- captions
-# Text on a picture, explaining something. ModHub allows it except on 01, in English, without
+# Text on a picture, explaining something. ModHub allows it except on picture 1, in English, without
 # links, credits or version numbers (and logos/watermarks, which a caption isn't). The untouched
-# picture stays in screenshots/originals/NN.jpg and every caption is drawn on it afresh, so a caption
+# picture stays in screenshots/originals/<n>.jpg and every caption is drawn on it afresh, so a caption
 # can be changed or taken off (--clear) any time; screenshots/captions.json lists them. --site: a
-# copy for dtmmods.com in screenshots/site/NN.jpg, where none of the ModHub rules apply.
+# copy for dtmmods.com in screenshots/site/<n>.jpg, where none of the ModHub rules apply.
 CAPTION_RULES = [
     (r"https?://|www\.|\b[\w-]+\.(com|de|net|org|eu|io)\b", "a link"),
     (r"\bv\d+(\.\d+)*\b|\b\d+\.\d+\.\d+(\.\d+)?\b|\bversion\b", "a version number"),
@@ -189,7 +227,7 @@ def caption_problems(texts, number):
     """Why a caption breaks the ModHub rules (empty: fine)."""
     out = []
     if number == 1:
-        out.append("01 must have no text (ModHub: the first screenshot without HUD and without text)")
+        out.append("picture 1 must have no text (ModHub: the first screenshot without HUD and without text)")
     joined = " ".join(t for t in texts if t)
     for pattern, what in CAPTION_RULES:
         if re.search(pattern, joined, re.I):
@@ -254,10 +292,10 @@ def draw_caption(im, title, text=None, at="bottom"):
 
 def caption(repo, number, title=None, text=None, at="bottom", clear=False, site=False):
     out = os.path.join(repo, "screenshots")
-    name = f"{number:02d}.jpg"
-    path = os.path.join(out, name)
-    if not os.path.isfile(path):
-        sys.exit(f"No {name} in {out}")
+    path = numbered(out).get(number)
+    if path is None:
+        sys.exit(f"No picture {number} in {out}")
+    name = os.path.basename(path)
     originals = os.path.join(out, "originals")
     original = os.path.join(originals, name)
     listed = os.path.join(out, "captions.json")
@@ -343,7 +381,7 @@ def pixel_notes(im):
 
 def check(repo):
     out = os.path.join(repo, "screenshots")
-    files = sorted(glob.glob(os.path.join(out, "*.jpg")))
+    files = list(numbered(out).values())      # in number order: 2.jpg before 10.jpg
     ok = True
 
     def bad(msg):
@@ -397,7 +435,7 @@ def check(repo):
             print(f"  {name}  caption: {c.get('title') or ''}" + (f" / {c['text']}" if c.get("text") else ""))
 
     print(f"{len(files)} screenshot(s) in {out}" + (" - OK" if ok else ""))
-    print("Check by eye: no text in 01; English only; no logos, watermarks, links, credits, version numbers.")
+    print("Check by eye: no text in picture 1; English only; no logos, watermarks, links, credits, version numbers.")
     return ok
 
 
@@ -466,6 +504,7 @@ def main(argv=None):
     sub.add_parser("studio").add_argument("folder", nargs="?")
     s = sub.add_parser("sheet"); s.add_argument("folder"); s.add_argument("--open", action="store_true")
     sub.add_parser("new").add_argument("--since")
+    sub.add_parser("renumber").add_argument("repo")
     c = sub.add_parser("caption"); c.add_argument("repo"); c.add_argument("number", type=int)
     c.add_argument("title", nargs="?"); c.add_argument("text", nargs="?")
     c.add_argument("--at", choices=["bottom", "top"], default="bottom")
@@ -475,6 +514,9 @@ def main(argv=None):
     if getattr(args, "repo", None):
         args.repo = find_repo(args.repo)
     if args.cmd == "check": return 0 if check(args.repo) else 1
+    if args.cmd == "renumber":
+        renumber(args.repo)
+        return 0
     if args.cmd == "caption":
         return 0 if caption(args.repo, args.number, args.title, args.text, args.at, args.clear, args.site) else 1
     if args.cmd == "add": add(args.repo, args.images, args.align)        # picking one at a time is fine

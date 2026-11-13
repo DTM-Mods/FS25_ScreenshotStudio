@@ -2,6 +2,17 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.2.2
+
+- **Clicking in menus:** `ssClick` presses a button on the open dialog or screen by its text or id, for example a page's own tabs (Player Trading+'s Incoming, Outgoing, Standing orders). Only buttons that show; a disabled one isn't pressed.
+- **Tabs:** `ssTab` switches a tab of the open page (Settings > Controls) or another page of the open screen.
+- **Typing:** `ssType qty 20000` writes into the field whose id has the first word in it.
+- **Wider views:** `ssView 35 50 3` takes the framed shots from three times as far, with more of the surroundings in the picture.
+- **Cleaner menu shots:** other mods' own drawing (AutoDrive lines and the like) stays hidden in UI shots, while the menus still draw.
+- **Pages that don't open:** the log says why (the page's own enabled check, the page the menu is on, which pages are off).
+- **Runner:** `--without-mod FS25_OldMod` switches a mod off in the save for that run only, for one that clashes with the mod being photographed. The mod list is put back afterwards.
+- **Picking:** pictures are numbered 1.jpg, 2.jpg and so on; `renumber` turns an older set into plain numbers.
+
 ## 0.2.1.6
 
 - **Menu shots:** `ssMenu` opens a screen, dialog or in-game menu page by name, mods' pages too (`ssMenu` alone lists them all), checks that the page really shows, and closes it again. `ssType tractor` writes text straight into the screen's search field: the shop with Searchables shows its results without any typing.

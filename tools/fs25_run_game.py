@@ -144,6 +144,38 @@ def backup(folder, work=WORK, stamp=None):
     return path, snapshot(folder)
 
 
+MOD_LINE = re.compile(r'[ \t]*<mod\s+modName="([^"]+)"[^>]*/>[ \t]*\r?\n?')
+
+
+def without_mods(career_xml, names):
+    """Switch mods off in a careerSavegame.xml for this run only (the backup puts them back).
+    Returns the names really removed."""
+    if not names:
+        return []
+    with open(career_xml, encoding="utf-8") as f:
+        text = f.read()
+    want = {n.lower() for n in names}
+    removed = []
+
+    def drop(m):
+        if m.group(1).lower() in want:
+            removed.append(m.group(1))
+            return ""
+        return m.group(0)
+    text = MOD_LINE.sub(drop, text)
+    if removed:
+        with open(career_xml, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+    return removed
+
+
+def put_back(folder, backup_zip, name):
+    """One file of the savegame back from the backup."""
+    with zipfile.ZipFile(backup_zip) as zf:
+        with zf.open(name) as src, open(os.path.join(folder, name), "wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+
 def restore_if_changed(folder, backup_zip, before, work=WORK, stamp=None):
     """If the game wrote to the savegame: keep the changed folder in work/, put the backup back.
     Returns the path of the kept folder, or None when nothing changed."""
@@ -477,7 +509,7 @@ def wait_for(cond, seconds, poll=1.0):
 
 
 def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
-        start_timeout=900, timeout=2400, press=True):
+        start_timeout=900, timeout=2400, press=True, without=None):
     saves = {s["index"]: s for s in savegames()}
     if save not in saves:
         sys.exit(f"No savegame{save} in {DOCS} (see: saves)")
@@ -501,6 +533,8 @@ def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
     print(f"savegame{save}: {sg['name']} ({sg['map']}), {len(steps)} steps:")
     for i, s in enumerate(steps, 1):
         print(f"  {i:2d}. {s}")
+    if without:
+        print(f"switched off for this run only: {', '.join(without)}")
     if dry_run:
         print("Dry run: nothing written, game not started.")
         return 0
@@ -511,6 +545,14 @@ def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     zip_path, before = backup(sg["path"], stamp=stamp)
     print(f"Backup: {zip_path}")
+    career = os.path.join(sg["path"], "careerSavegame.xml")
+    removed = without_mods(career, without)
+    for name in without or []:
+        if name.lower() not in {r.lower() for r in removed}:
+            print(f"! {name} isn't in savegame{save}'s mod list")
+    if removed:
+        print(f"Switched off for this run: {', '.join(removed)}")
+        before = snapshot(sg["path"])
     started_at = time.time()
     write_autorun(steps, save)
     log_path = os.path.join(DOCS, "log.txt")
@@ -559,6 +601,9 @@ def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
                 wait_for(lambda: not game_running(), 30)
             time.sleep(2)   # file handles
             kept = restore_if_changed(sg["path"], zip_path, before, stamp=stamp)
+            if removed and not kept:
+                put_back(sg["path"], zip_path, "careerSavegame.xml")
+                print(f"Mod list of savegame{save} put back")
             if kept:
                 print(f"The game wrote to savegame{save} (autosave?): backup put back, the changed one is in {kept}")
             else:
@@ -598,6 +643,8 @@ def main(argv=None):
     r.add_argument("--anyway", action="store_true", help="start even if a check fails")
     r.add_argument("--dry-run", action="store_true", help="only the checks and the steps")
     r.add_argument("--no-press", action="store_true", help="don't press START on the loading screen (you do)")
+    r.add_argument("--without-mod", action="append", metavar="MOD",
+                   help="switch a mod off in the save for this run only, e.g. one that clashes: --without-mod FS25_OldMod")
     args = p.parse_args(argv)
     if args.cmd == "saves":
         rows = savegames()
@@ -614,7 +661,7 @@ def main(argv=None):
     steps = with_move(with_target(list(args.steps) if args.steps else list(PLANS[args.plan]), args.target), args.move)
     steps = with_menus(steps, args.menu, args.folder)
     return run(args.save, steps, keep_open=args.keep_open, sheet=args.sheet, anyway=args.anyway, dry_run=args.dry_run,
-               press=not args.no_press)
+               press=not args.no_press, without=args.without_mod)
 
 
 def with_menus(steps, menus, folder=None):
