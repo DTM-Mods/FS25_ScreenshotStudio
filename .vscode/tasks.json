@@ -1,0 +1,82 @@
+{
+    // Ctrl+Shift+P > "Tasks: Run Task" > Screenshots: ...   The tests: "Tasks: Run Test Task".
+    // Same commands as the double-clickable tools\*.cmd shortcuts.
+    "version": "2.0.0",
+    "options": { "cwd": "${workspaceFolder}" },
+    "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+    "problemMatcher": [],
+    "tasks": [
+        {
+            "label": "Screenshots: what's been taken",
+            "type": "process", "command": "py",
+            "args": ["-3", "tools/fs25_screenshots.py", "studio"]
+        },
+        {
+            "label": "Screenshots: list one folder",
+            "type": "process", "command": "py",
+            "args": ["-3", "tools/fs25_screenshots.py", "studio", "${input:folder}"]
+        },
+        {
+            "label": "Screenshots: contact sheet",
+            "type": "process", "command": "py",
+            "args": ["-3", "tools/fs25_screenshots.py", "sheet", "${input:folder}", "--open"]
+        },
+        {
+            "label": "Screenshots: pick into repo",
+            // one command string so the numbers stay separate arguments
+            "type": "shell",
+            "command": "py -3 tools/fs25_screenshots.py pick '${input:repo}' '${input:folder}' ${input:numbers} --align ${input:align}"
+        },
+        {
+            "label": "Screenshots: check repo",
+            "type": "process", "command": "py",
+            "args": ["-3", "tools/fs25_screenshots.py", "check", "${input:repo}"]
+        },
+        {
+            "label": "Screenshots: newest game/Steam shots",
+            "type": "process", "command": "py",
+            "args": ["-3", "tools/fs25_screenshots.py", "new", "--since", "${input:since}"]
+        },
+        {
+            "label": "Game: list savegames",
+            "type": "process", "command": "py",
+            "args": ["-3", "tools/fs25_run_game.py", "saves"]
+        },
+        {
+            "label": "Game: run a plan in a savegame",
+            "type": "process", "command": "py",
+            "args": ["-3", "tools/fs25_run_game.py", "run", "${input:save}", "--plan", "${input:plan}", "--target", "${input:target}", "--sheet"]
+        },
+        {
+            "label": "Tests: ScreenshotStudio.lua (offline)",
+            "type": "process", "command": "py",
+            "args": ["-3", "tests/test_screenshot_studio.py"]
+        },
+        {
+            "label": "Tests: fs25_screenshots.py",
+            "type": "process", "command": "py",
+            "args": ["-3", "tests/test_screenshots_tool.py"]
+        },
+        {
+            "label": "Tests: fs25_run_game.py",
+            "type": "process", "command": "py",
+            "args": ["-3", "tests/test_run_game.py"]
+        },
+        {
+            "label": "Tests: all",
+            "dependsOn": ["Tests: ScreenshotStudio.lua (offline)", "Tests: fs25_screenshots.py", "Tests: fs25_run_game.py"],
+            "dependsOrder": "sequence",
+            "group": { "kind": "test", "isDefault": true }
+        }
+    ],
+    "inputs": [
+        { "id": "folder", "type": "promptString", "description": "Screenshot Studio folder (e.g. FS25_PX150XL) or a path" },
+        { "id": "repo", "type": "promptString", "description": "Mod repo: name (found under fs2025) or full path" },
+        { "id": "numbers", "type": "promptString", "description": "Numbers from the sheet, hero shot first (e.g. 4 11 2)" },
+        { "id": "align", "type": "pickString", "description": "Ultrawide crop", "options": ["center", "left", "right"], "default": "center" },
+        { "id": "since", "type": "promptString", "description": "Since (YYYY-MM-DD)", "default": "2026-11-01" },
+        { "id": "save", "type": "promptString", "description": "Savegame number (see Game: list savegames)" },
+        { "id": "target", "type": "promptString", "description": "What to photograph, part of its name (empty: what you stand next to)", "default": "" },
+        { "id": "plan", "type": "pickString", "description": "Plan", "options": ["smoke", "orbit", "colors", "lights", "burst"], "default": "smoke" }
+    ]
+}

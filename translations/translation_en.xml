@@ -4,6 +4,8 @@
         <text name="input_SS_CLEAN_SHOT" text="Screenshot Studio: clean shot"/>
         <text name="input_SS_ORBIT" text="Screenshot Studio: orbit"/>
         <text name="input_SS_UI_SHOT" text="Screenshot Studio: UI shot (5 s)"/>
-        <text name="input_SS_GOLDEN_HOUR" text="Screenshot Studio: golden hour on/off"/>
+        <text name="input_SS_GOLDEN_HOUR" text="Screenshot Studio: light (golden hour, mist, midday, overcast, off)"/>
+        <text name="input_SS_BURST" text="Screenshot Studio: burst while working (on/off)"/>
+        <text name="input_SS_COLORS" text="Screenshot Studio: every color"/>
     </texts>
 </l10n>
