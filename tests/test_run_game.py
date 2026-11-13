@@ -138,6 +138,8 @@ check(w7.autostart and len(pressed7) == 1, "update dialog (quiet after auto star
 check(rg.parse_keys("ctrl+f tractor enter Esc") == [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"]), ("chord", ["esc"])],
       "keys: chords, key names (any case), words to type")
 check(rg.parse_keys("ctrl+f pause tractor enter")[1] == ("pause", 1.0), "keys: pause waits a second")
+check(rg.parse_keys("click@235,250 rclick@960,540 move@10,20 wheel@900,600 e") == [("mouse", ("click", 235, 250)), ("mouse", ("rclick", 960, 540)), ("mouse", ("move", 10, 20)), ("mouse", ("wheel", 900, 600)), ("text", "e")],
+      "keys: click@x,y, rclick@x,y and move@x,y are the mouse at that point of a 1920x1080 picture")
 w8 = rg.LogWatch()
 w8.feed("2026-11-13 11:00:01 [ScreenshotStudio] autorun: step 4/9 ssKeys ctrl+f tractor -> Keys for the runner to type: ctrl+f tractor\n")
 typed, said = [], []

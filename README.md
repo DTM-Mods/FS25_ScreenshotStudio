@@ -129,7 +129,7 @@ For a script mod the pictures are its screens. **Right Ctrl + 3** (`ssUi`) waits
 | `ssType tractor` | writes the text straight into the screen's text field (one with "search" in its id first, e.g. Searchables' box), no keyboard: Searchables searches as soon as its field changes |
 | `ssType qty 20000` | when the first word is part of a field's id and more words follow: the rest into that field |
 | `ssClick My orders` | clicks a button of the open dialog (else screen) by its text, else its id: a page's own tabs like Player Trading+'s Incoming, Outgoing, Standing orders. Only what shows; a disabled button isn't clicked; `ssClick` alone lists them |
-| `ssKeys ctrl+f tractor enter` | in an autorun: the runner types these keys into the game window (a key name or a chord with `+`, `pause` for a second, else the word letter by letter). Careful with letters the screen uses as keys: in the shop **C** opens the game's own search, so typing "tractor" there searched for "TOR"; for text use `ssType` |
+| `ssKeys ctrl+f tractor enter` | in an autorun: the runner types these keys into the game window (a key name or a chord with `+`, `pause` for a second, else the word letter by letter). The mouse too: `click@x,y` (`rclick@x,y` right click, `move@x,y` no click, `wheel@x,y` 5 notches down) at that point of a 1920x1080 picture of the game, for tools that need the cursor (a construction brush). Careful with letters the screen uses as keys: in the shop **C** opens the game's own search, so typing "tractor" there searched for "TOR"; for text use `ssType` |
 
 An open menu pauses the game, so the autorun's steps go on from the menu's own update. With the runner:
 

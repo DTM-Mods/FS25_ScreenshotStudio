@@ -330,12 +330,21 @@ KEY_NAMES = {"enter": 0x0D, "return": 0x0D, "esc": 0x1B, "escape": 0x1B, "tab": 
 EXTENDED = {0x2E, 0x26, 0x28, 0x25, 0x27, 0x24, 0x23, 0x21, 0x22}
 
 
+MOUSE_WORD = re.compile(r"^(click|rclick|move|wheel)@(\d+),(\d+)$")
+
+
 def parse_keys(spec):
-    """'ctrl+f tractor enter' -> [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"])]"""
+    """'ctrl+f tractor enter' -> [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"])];
+    'click@960,540' -> [("mouse", ("click", 960, 540))]: the mouse to that point of a 1920x1080 picture of the
+    game window (scaled to its real size), then a left click (rclick: right click, move: no click, wheel: the
+    wheel 5 notches down there, to scroll a list)"""
     out = []
     for word in spec.split():
         low = word.lower()
-        if low == "pause":
+        m = MOUSE_WORD.match(low)
+        if m:
+            out.append(("mouse", (m.group(1), int(m.group(2)), int(m.group(3)))))
+        elif low == "pause":
             out.append(("pause", 1.0))
         elif "+" in low and len(low) > 1:
             out.append(("chord", low.split("+")))
@@ -348,9 +357,36 @@ def parse_keys(spec):
 
 def send_keys(actions):
     """Types parse_keys() actions into the game window (scan codes too: games read the hardware key)."""
-    if focus_game() is None:
+    hwnd = focus_game()
+    if hwnd is None:
         return False
     u = user32()
+
+    def mouse(kind, x, y):
+        import ctypes
+        from ctypes import wintypes
+        rect, origin = wintypes.RECT(), wintypes.POINT(0, 0)
+        u.GetClientRect(hwnd, ctypes.byref(rect))
+        u.ClientToScreen(hwnd, ctypes.byref(origin))
+        w, h = max(rect.right, 1), max(rect.bottom, 1)
+        sx, sy = origin.x + round(x * w / 1920), origin.y + round(y * h / 1080)
+        # a few steps on the way: the game moves its cursor from mouse movement, not from where the pointer is
+        u.SetCursorPos(sx - 12, sy - 12)
+        time.sleep(0.15)
+        for i in range(1, 4):
+            u.SetCursorPos(sx - 12 + 4 * i, sy - 12 + 4 * i)
+            time.sleep(0.15)
+        time.sleep(0.5)
+        if kind == "wheel":
+            for _ in range(5):
+                u.mouse_event(0x0800, 0, 0, -120 & 0xFFFFFFFF, 0)
+                time.sleep(0.25)
+        elif kind != "move":
+            down, up = (0x0002, 0x0004) if kind == "click" else (0x0008, 0x0010)
+            u.mouse_event(down, 0, 0, 0, 0)
+            time.sleep(0.12)
+            u.mouse_event(up, 0, 0, 0, 0)
+        time.sleep(1.5)
 
     def vk_of(name):
         if name in KEY_NAMES:
@@ -373,6 +409,8 @@ def send_keys(actions):
     for kind, value in actions:
         if kind == "pause":
             time.sleep(value)
+        elif kind == "mouse":
+            mouse(*value)
         elif kind == "chord":
             vks = []
             for name in value:
