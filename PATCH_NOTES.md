@@ -2,6 +2,12 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.1.6
+
+- **Menu shots:** `ssMenu` opens a screen, dialog or in-game menu page by name, mods' pages too (`ssMenu` alone lists them all), checks that the page really shows, and closes it again. `ssType tractor` writes text straight into the screen's search field: the shop with Searchables shows its results without any typing.
+- **Runner:** the `menus` plan with `--menu` and `--folder` takes a UI shot of each menu; autorun steps go on while a menu pauses the game; a UI shot of a page that didn't open is skipped.
+- **Typing keys** (`ssKeys`) holds each key longer and waits after a chord like Ctrl+F.
+
 ## 0.2.1.3
 
 - The release now has two zips: `FS25_ScreenshotStudio.zip` (the mod, into the mods folder) and `ScreenshotStudio_Tools.zip` (the game runner, contact sheets, picking, captions, checks and their shortcuts; unzip it anywhere, needs Python 3 with Pillow).
