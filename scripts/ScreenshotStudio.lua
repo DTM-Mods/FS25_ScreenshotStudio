@@ -2028,6 +2028,97 @@ function SS:consoleColors(configName)
     return self:colors(configName) and "Going through the colors" or "Not possible (see log)"
 end
 
+-- ------------------------------------------------------------------ menus
+-- ssMenu UWMFrame opens the in-game menu on that page (a mod's page too: Player Trading+ adds one),
+-- ssMenu ShopMenu a screen, ssMenu xyzDialog a dialog, ssMenu close closes them; ssMenu lists all.
+-- A UI shot (ssUi) then takes the screen with the menu.
+function SS:inGameMenu()
+    if g_gui == nil or g_gui.screenControllers == nil or InGameMenu == nil then return nil end
+    return g_gui.screenControllers[InGameMenu]
+end
+
+-- the in-game menu's pages: { index, frame, name }; the name from the frame, else from the GUI
+-- it was loaded as (g_gui.frames / g_gui.guis), else "page N"
+function SS:menuPages()
+    local menu = self:inGameMenu()
+    local list = {}
+    if menu == nil then return list, nil end
+    local known = {}
+    for _, t in ipairs({ g_gui.frames or {}, g_gui.guis or {} }) do
+        for n, gui in pairs(t) do
+            if type(gui) == "table" then
+                known[gui] = known[gui] or n
+                if type(gui.target) == "table" then known[gui.target] = known[gui.target] or n end
+            end
+        end
+    end
+    local frames = menu.pageFrames
+    if frames == nil and menu.pagingElement ~= nil then frames = menu.pagingElement.pages end
+    for i, f in ipairs(frames or {}) do
+        local frame = type(f) == "table" and f.element ~= nil and f.element or f
+        local name = known[frame] or (type(frame) == "table" and (frame.name or frame.pageName)) or nil
+        table.insert(list, { index = i, frame = frame, name = tostring(name or ("page " .. i)) })
+    end
+    return list, menu
+end
+
+function SS:screenNames()
+    local names = {}
+    for n in pairs(g_gui ~= nil and g_gui.guis or {}) do
+        if type(n) == "string" then table.insert(names, n) end
+    end
+    table.sort(names)
+    return names
+end
+
+function SS:consoleMenu(...)
+    local name = table.concat({ ... }, " ")
+    if g_gui == nil then return "No GUI" end
+    if name == "" then
+        local pages = {}
+        for _, p in ipairs(self:menuPages()) do table.insert(pages, p.index .. " " .. p.name) end
+        local screens = self:screenNames()
+        log("In-game menu pages: %s", #pages > 0 and table.concat(pages, ", ") or "none")
+        log("Screens and dialogs: %s", table.concat(screens, ", "))
+        return string.format("%d menu pages, %d screens/dialogs: listed in the log", #pages, #screens)
+    end
+    if name == "close" then
+        pcall(g_gui.showGui, g_gui, "")
+        return "Menus closed"
+    end
+    local want, num = name:lower(), tonumber(name)
+    local pages, menu = self:menuPages()
+    for _, p in ipairs(pages) do
+        if (num ~= nil and p.index == num) or (num == nil and p.name:lower():find(want, 1, true)) then
+            local ok, err = pcall(g_gui.showGui, g_gui, "InGameMenu")
+            if ok and menu.goToPage ~= nil then ok, err = pcall(menu.goToPage, menu, p.frame) end
+            return ok and ("In-game menu, page " .. p.name) or ("Opening the page failed: " .. tostring(err))
+        end
+    end
+    local hit
+    for _, n in ipairs(self:screenNames()) do
+        if n:lower() == want then hit = n end
+    end
+    if hit == nil then
+        for _, n in ipairs(self:screenNames()) do
+            if hit == nil and n:lower():find(want, 1, true) then hit = n end
+        end
+    end
+    if hit == nil then return "No screen, dialog or menu page called " .. name .. ": ssMenu lists them" end
+    local isDialog = hit:find("Dialog") ~= nil
+    local ok, err = pcall(isDialog and g_gui.showDialog or g_gui.showGui, g_gui, hit)
+    return ok and ("Opened " .. hit) or ("Opening " .. hit .. " failed: " .. tostring(err))
+end
+
+-- ssKeys ctrl+f tractor enter: the game can't press its own keys, so in an autorun this is a note for
+-- fs25_run_game.py, which reads it in the log and types the keys into the game window (a key name
+-- or a chord with +, else the word is typed). Typed by hand it does nothing.
+function SS:consoleKeys(...)
+    local keys = table.concat({ ... }, " ")
+    if keys == "" then return "ssKeys <keys>: e.g. ctrl+f tractor enter" end
+    return "Keys for the runner to type: " .. keys
+end
+
 function SS:consoleFolder(name)
     if name == nil or name == "" then
         self.forcedFolder = nil
@@ -2229,7 +2320,7 @@ end
 SS.AUTORUN_FILE = "autorun.xml"
 SS.AUTORUN_MAX_AGE = 20       -- minutes
 SS.AUTORUN_START_S = 10       -- after the save is running: let the map stream in
-SS.AUTORUN_PAUSE = { ssLight = 3, ssGolden = 3, ssEnter = 8, ssMove = 6 }   -- seconds after these steps; others 1
+SS.AUTORUN_PAUSE = { ssLight = 3, ssGolden = 3, ssEnter = 8, ssMove = 6, ssMenu = 2, ssKeys = 4 }   -- seconds after these steps; others 1
 
 -- "20261112_183000" -> minutes since a fixed day (only differences matter)
 local function stampMinutes(stamp)
@@ -2346,6 +2437,8 @@ SS.COMMANDS = {
     { "ssSpot", "Here (where you stand, the way you look) is where ssMove puts machines on this map; [clear]", "consoleSpot" },
     { "ssMove", "The machine with what is hitched to it to your spot or an open, flat place; [back] = where it was", "consoleMove" },
     { "ssEnter", "Get into the target, the nearest vehicle, or the one whose name contains [name]; outside camera", "consoleEnter" },
+    { "ssMenu", "Open a screen, dialog or in-game menu page by (part of) its name: [name]; empty = list them; close", "consoleMenu" },
+    { "ssKeys", "For the runner: keys to type into the game, e.g. ctrl+f tractor enter (the runner types them)", "consoleKeys" },
     { "ssFolder", "Folder name for the next shots, empty = automatic", "consoleFolder" },
     { "ssQuiet", "Hide other mods' drawing (Courseplay, AutoDrive, hints) during shots: on/off", "consoleQuiet" },
     { "ssRadius", "Orbit radius around buildings in metres", "consoleRadius" },
@@ -2396,6 +2489,7 @@ end
 if Gui ~= nil and Gui.update ~= nil then
     Gui.update = Utils.appendedFunction(Gui.update, function()
         SS:tick()
+        SS:tickAutorun()     -- an open menu pauses the mission's update: the steps go on from here
     end)
 end
 

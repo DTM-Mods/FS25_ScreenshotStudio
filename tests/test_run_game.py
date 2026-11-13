@@ -134,6 +134,19 @@ check(not pressed7, "auto start, log just written: wait")
 p7.tick(w7, now=53)
 check(w7.autostart and len(pressed7) == 1, "update dialog (quiet after auto start): Enter = START without updating")
 
+# --- ssKeys: the mod logs them, the runner types them
+check(rg.parse_keys("ctrl+f tractor enter Esc") == [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"]), ("chord", ["esc"])],
+      "keys: chords, key names (any case), words to type")
+w8 = rg.LogWatch()
+w8.feed("2026-11-13 11:00:01 [ScreenshotStudio] autorun: step 4/9 ssKeys ctrl+f tractor -> Keys for the runner to type: ctrl+f tractor\n")
+typed, said = [], []
+rg.KeyTyper(send=lambda spec: typed.append(spec) or True, echo=said.append).tick(w8)
+check(typed == ["ctrl+f tractor"] and w8.keys == [] and said == ["Typing into the game: ctrl+f tractor"], "the typer types what the log asks, once")
+check(rg.with_menus(["ssEnter", "quit"], ["UWMFrame", "ShopMenu"], "FS25_PlayerTradingPlus") ==
+      ["ssEnter", "ssFolder FS25_PlayerTradingPlus", "ssMenu UWMFrame", "wait 2", "ssUi 1", "ssMenu close", "wait 1",
+       "ssMenu ShopMenu", "wait 2", "ssUi 1", "ssMenu close", "wait 1", "quit"]
+      and rg.with_menus(["ssEnter", "quit"], None, None) == ["ssEnter", "quit"], "--menu/--folder: open, UI shot, close; the folder first")
+
 # --- is the game running: tasklist's table cuts the name, CSV doesn't
 check(rg.listed('"FarmingSimulator2025Game.exe","18900","Console","1","9,812,004 K"\n')
       and not rg.listed("FarmingSimulator2025Game.ex    18900 Console    1  9,812,004 K\n")

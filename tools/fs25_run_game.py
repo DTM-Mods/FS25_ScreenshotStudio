@@ -47,6 +47,7 @@ PLANS = {
     "burst": ["ssEnter", "ssBurst 10 2", "quit"],
     "building": ["ssEnter", "ssLight golden", "ssShot auto", "ssOrbit", "ssLight morning", "ssShot auto",
                  "ssLight overcast", "ssShot auto", "ssLight midday", "ssShot auto", "ssLight off", "quit"],
+    "menus": ["ssEnter", "quit"],
 }
 PLAN_TEXT = {
     "smoke": "everything once: lights, clean shot, orbit, burst, every color (tests the mod in the real game)",
@@ -55,6 +56,7 @@ PLAN_TEXT = {
     "lights": "a clean shot in each light",
     "burst": "10 shots, one every 2 s (drive it yourself, or watch it stand)",
     "building": "a building (with --target): framed in each light, golden hour orbit; no colors, no move",
+    "menus": "UI shots of menus (with --menu, see ssMenu): each opened, shot with the menu, closed",
 }
 
 
@@ -164,6 +166,7 @@ class LogWatch:
         self.autostart = False               # the game took -autoStartSavegameId (a mod-update dialog may follow)
         self.last_line_at = None             # when the last line came (the START screen writes nothing)
         self.step = None         # the last step the mod started: "3/12 ssShot"
+        self.keys = []           # ssKeys steps the runner still has to type
         self.errors = 0
         self.lines = []          # Screenshot Studio lines and errors near them, to print
         self._buf = ""
@@ -193,6 +196,9 @@ class LogWatch:
             step = re.search(r"autorun: step (\d+/\d+ .*?) -> ", line)
             if step:
                 self.step = step.group(1)
+                keys = re.match(r"\d+/\d+ ssKeys (.+)$", step.group(1))
+                if keys:
+                    self.keys.append(keys.group(1).strip())
             if "autorun: started" in line:
                 self.started = True
             elif "autorun: done" in line:
@@ -247,37 +253,116 @@ def game_pids():
     return pids
 
 
-def press_start():
-    """Game window to the front, then Enter (with its scan code: games read the hardware key)."""
+def user32():
     try:
         import ctypes
-        from ctypes import wintypes
-        user32 = ctypes.windll.user32
+        return ctypes.windll.user32
     except (ImportError, AttributeError, OSError):
-        return False
+        return None
+
+
+def focus_game():
+    """The game window to the front; its handle, or None."""
+    u = user32()
+    if u is None:
+        return None
+    import ctypes
+    from ctypes import wintypes
     pids, windows = game_pids(), []
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def each(hwnd, _):
         pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if pid.value in pids and user32.IsWindowVisible(hwnd):
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids and u.IsWindowVisible(hwnd):
             windows.append(hwnd)
         return True
 
-    user32.EnumWindows(each, 0)
+    u.EnumWindows(each, 0)
     for hwnd in windows:
-        user32.ShowWindow(hwnd, 9)                 # restore if minimised
-        user32.keybd_event(0x12, 0, 0, 0)          # a tap of Alt lets this process change the foreground
-        user32.keybd_event(0x12, 0, 2, 0)
-        user32.SetForegroundWindow(hwnd)
+        u.ShowWindow(hwnd, 9)                 # restore if minimised
+        u.keybd_event(0x12, 0, 0, 0)          # a tap of Alt lets this process change the foreground
+        u.keybd_event(0x12, 0, 2, 0)
+        u.SetForegroundWindow(hwnd)
         time.sleep(0.4)
-        if user32.GetForegroundWindow() == hwnd:
-            user32.keybd_event(0x0D, 0x1C, 0, 0)   # Enter down / up
-            time.sleep(0.08)
-            user32.keybd_event(0x0D, 0x1C, 2, 0)
-            return True
-    return False
+        if u.GetForegroundWindow() == hwnd:
+            return hwnd
+    return None
+
+
+# key names for ssKeys; a word that isn't one (and has no "+") is typed letter by letter
+KEY_NAMES = {"enter": 0x0D, "return": 0x0D, "esc": 0x1B, "escape": 0x1B, "tab": 0x09, "space": 0x20,
+             "backspace": 0x08, "delete": 0x2E, "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
+             "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
+             "ctrl": 0x11, "alt": 0x12, "shift": 0x10, **{f"f{i}": 0x6F + i for i in range(1, 13)}}
+EXTENDED = {0x2E, 0x26, 0x28, 0x25, 0x27, 0x24, 0x23, 0x21, 0x22}
+
+
+def parse_keys(spec):
+    """'ctrl+f tractor enter' -> [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"])]"""
+    out = []
+    for word in spec.split():
+        low = word.lower()
+        if "+" in low and len(low) > 1:
+            out.append(("chord", low.split("+")))
+        elif low in KEY_NAMES:
+            out.append(("chord", [low]))
+        else:
+            out.append(("text", word))
+    return out
+
+
+def send_keys(actions):
+    """Types parse_keys() actions into the game window (scan codes too: games read the hardware key)."""
+    if focus_game() is None:
+        return False
+    u = user32()
+
+    def vk_of(name):
+        if name in KEY_NAMES:
+            return KEY_NAMES[name], 0
+        r = u.VkKeyScanW(ord(name[0]))
+        return r & 0xFF, (r >> 8) & 0xFF            # shift state: 1 shift, 2 ctrl, 4 alt
+
+    def tap(vks):
+        for vk in vks:
+            u.keybd_event(vk, u.MapVirtualKeyW(vk, 0), 1 if vk in EXTENDED else 0, 0)
+            time.sleep(0.03)
+        for vk in reversed(vks):
+            u.keybd_event(vk, u.MapVirtualKeyW(vk, 0), 2 | (1 if vk in EXTENDED else 0), 0)
+            time.sleep(0.03)
+        time.sleep(0.05)
+
+    for kind, value in actions:
+        if kind == "chord":
+            vks = []
+            for name in value:
+                vk, state = vk_of(name)
+                vks.append(vk)
+            tap(vks)
+        else:
+            for ch in value:
+                vk, state = vk_of(ch)
+                tap(([0x10] if state & 1 else []) + [vk])
+    return True
+
+
+def press_start():
+    """Game window to the front, then Enter."""
+    return send_keys([("chord", ["enter"])])
+
+
+class KeyTyper:
+    """Types the keys of ssKeys steps as the mod logs them."""
+    def __init__(self, send=None, echo=print):
+        self.send, self.echo = send or (lambda spec: send_keys(parse_keys(spec))), echo
+
+    def tick(self, watch):
+        while watch.keys:
+            spec = watch.keys.pop(0)
+            ok = self.send(spec)
+            self.echo(f"Typing into the game: {spec}" if ok else f"! Couldn't bring the game window to the front to type: {spec}")
+        return False
 
 
 def follow_log(path, since, watch, should_stop, poll=0.5, echo=print):
@@ -441,7 +526,8 @@ def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
         elif not game_running():
             print("\n".join(ended_early(watch, crash_logged(started_at), crash_dumps(started_at))))
         else:
-            finished = wait_for(lambda: watch.done or not game_running(), timeout)
+            typer = KeyTyper()
+            finished = wait_for(lambda: typer.tick(watch) or watch.done or not game_running(), timeout, poll=0.3)
             if watch.done:
                 result = 0
                 if keep_open:
@@ -495,6 +581,8 @@ def main(argv=None):
     r.add_argument("--plan", choices=sorted(PLANS), default="smoke")
     r.add_argument("--steps", nargs="+", help='your own steps instead of a plan, e.g. --steps "ssEnter" "ssOrbit 12"')
     r.add_argument("--target", help='what to photograph, by part of its name (ssTarget): e.g. --target "PX150"')
+    r.add_argument("--menu", action="append", help='a menu to take a UI shot of (ssMenu name; again for more): --menu UWMFrame')
+    r.add_argument("--folder", help="folder for the shots (ssFolder), e.g. FS25_PlayerTradingPlus")
     r.add_argument("--move", action="store_true",
                    help="move it (with what is hitched) to your ssSpot or an open, flat place first, and back at the end")
     r.add_argument("--keep-open", action="store_true", help="leave the game running afterwards (no backup restore)")
@@ -516,8 +604,25 @@ def main(argv=None):
             print(f"{k:7s} {PLAN_TEXT[k]}\n        " + " / ".join(PLANS[k]))
         return 0
     steps = with_move(with_target(list(args.steps) if args.steps else list(PLANS[args.plan]), args.target), args.move)
+    steps = with_menus(steps, args.menu, args.folder)
     return run(args.save, steps, keep_open=args.keep_open, sheet=args.sheet, anyway=args.anyway, dry_run=args.dry_run,
                press=not args.no_press)
+
+
+def with_menus(steps, menus, folder=None):
+    """For each --menu: open it, a UI shot, close it (before quit); --folder: where the shots go."""
+    if not menus and not folder:
+        return steps
+    out = list(steps)
+    end = out.index("quit") if "quit" in out else len(out)
+    add = []
+    for m in menus or []:
+        add += [f"ssMenu {m}", "wait 2", "ssUi 1", "ssMenu close", "wait 1"]
+    out[end:end] = add
+    if folder:
+        at = next((i + 1 for i, s in enumerate(out) if s.startswith("ssEnter")), 0)
+        out.insert(at, f"ssFolder {folder}")
+    return out
 
 
 def with_move(steps, move):

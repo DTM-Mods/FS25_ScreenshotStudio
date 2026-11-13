@@ -87,6 +87,27 @@ python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 1 "More on dtmmod
 
 A dark band with a heading and wrapped text goes across the bottom (`--at top`: the top). The untouched picture is kept in `screenshots/originals/` and every caption is drawn on it afresh, so a caption can be changed any time without text piling up; `screenshots/captions.json` lists them. The tool refuses a caption on 01 and one with a link, a version number, credits ("made by", ©) or letters that aren't English, and `check` says the same. `--site` writes a copy for dtmmods.com in `screenshots/site/NN.jpg`, where none of these rules apply, and leaves the ModHub picture as it is.
 
+## Menus (UI shots)
+
+For a script mod the pictures are its screens. **Right Ctrl + 3** (`ssUi`) waits 5 seconds while you open the menu, then saves the screen with the menu on it (HUD and other mods' drawing kept; never as 01). The mod can also open a menu itself:
+
+| | |
+|-|-|
+| `ssMenu` | lists the in-game menu's pages (mods' pages too, named by the GUI they were loaded as) and all screens and dialogs, in the log |
+| `ssMenu UWMFrame` | the in-game menu on that page (Player Trading+'s page); part of a name or the page number works too |
+| `ssMenu ShopMenu` | that screen; a name with `Dialog` opens as a dialog |
+| `ssMenu close` | closes them |
+| `ssKeys ctrl+f tractor enter` | in an autorun: the runner types these keys into the game window (a key name or a chord with `+`, else the word is typed letter by letter); Searchables needs Left Ctrl + F and a search to show anything |
+
+An open menu pauses the game, so the autorun's steps go on from the menu's own update. With the runner:
+
+```
+run-game.cmd 1 --plan menus --menu UWMFrame --folder FS25_PlayerTradingPlus
+python tools/fs25_run_game.py run 1 --steps "ssFolder FS25_Searchables" "ssMenu ShopMenu" "wait 3" "ssKeys ctrl+f tractor" "wait 2" "ssUi 1" "ssMenu close" "quit"
+```
+
+`--menu` (again for more) opens each menu, takes a UI shot and closes it; `--folder` is where the shots go (else `ui`).
+
 ## How the pictures are taken
 
 `renderScreenshot` renders the 3D view at exactly 1920x1080 whatever your monitor is, without the HUD. Lines other mods draw into the world (AutoDrive's routes) are hidden during shots, see "Other mods on the screen". GIANTS doesn't document the call; the arguments are the ones GIANTS' own editor script passes (`saveBillboards.lua` in GIANTS Editor 10.0). The first shot tries its formats one by one and remembers the first that writes a file (`settings.xml`). If none does, the mod hides the HUD and saves the screen instead; on an ultrawide monitor `fs25_screenshots.py` then crops the middle 16:9 (put the subject in the middle of the screen).
@@ -95,7 +116,7 @@ A dark band with a heading and wrapped text goes across the bottom (`--at top`: 
 
 ## Letting the game run by itself
 
-`python tools/fs25_run_game.py run <save> [--plan smoke|orbit|colors|lights|burst|building] [--target <name>] [--move]` (or `tools\run-game.cmd`) starts the game with that savegame, has Screenshot Studio take the pictures of the plan, and ends the game without saving. `saves` lists your savegames and which have the mod on; `plans` shows the steps of each plan; `--steps "ssEnter M1240" "ssOrbit 12"` runs your own; `--target "PX150"` puts `ssTarget PX150` first, so the plan photographs that wherever it stands; `--dry-run` only checks.
+`python tools/fs25_run_game.py run <save> [--plan smoke|orbit|colors|lights|burst|building|menus] [--target <name>] [--move] [--menu <name>] [--folder <name>]` (or `tools\run-game.cmd`) starts the game with that savegame, has Screenshot Studio take the pictures of the plan, and ends the game without saving. `saves` lists your savegames and which have the mod on; `plans` shows the steps of each plan; `--steps "ssEnter M1240" "ssOrbit 12"` runs your own; `--target "PX150"` puts `ssTarget PX150` first, so the plan photographs that wherever it stands; `--dry-run` only checks.
 
 Once: install the zip yourself (the script never copies it into the mods folder), switch the mod on in a single-player save, park the machine somewhere nice, stand next to it, save. Every plan starts with `ssEnter`: into the nearest vehicle, outside camera.
 
@@ -170,6 +191,8 @@ Every batch writes `_shots_<time>_<kind>.xml` next to its pictures: per picture 
 | `ssEnter [name]` | into the target, the nearest vehicle, or the one whose name contains `name`; outside camera |
 | `ssMove [back]` | the machine with what's hitched to your spot or an open, flat place; `back`: where it was (see "Moving it to a better place") |
 | `ssSpot [clear]` | here, the way you look, is where `ssMove` puts machines on this map; `clear` forgets it |
+| `ssMenu [name\|close]` | opens a screen, dialog or in-game menu page; empty = list them (see "Menus") |
+| `ssKeys <keys>` | in an autorun: keys for the runner to type into the game |
 | `ssFolder [name]` | folder for the next shots (e.g. `FS25_Searchables` for UI shots); empty = automatic |
 | `ssQuiet [on\|off]` | other mods' drawing hidden during shots (on) or left in (off); empty = switch |
 | `ssRadius [metres]` | how big buildings are for the orbit (18) |

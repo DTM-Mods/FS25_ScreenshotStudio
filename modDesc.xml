@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <modDesc descVersion="114" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
     <author>Fennell</author>
-    <version>0.2.1.1</version>
+    <version>0.2.1.2</version>
     <title>
         <en>DTM Screenshot Studio</en>
         <de>DTM Screenshot Studio</de>
@@ -18,7 +18,7 @@ Right Ctrl + 6: every color. The current view once in each shop color of the veh
 
 Pictures are 1920x1080 where the game allows it and go to modSettings/FS25_ScreenshotStudio/<mod name>/.
 
-Console: ssShot [auto], ssView [angle] [up], ssClear [on|off], ssOrbit [count] [distance], ssUi [seconds], ssBurst [count] [seconds], ssColors [option], ssLight [preset] [hour], ssGolden [hour], ssTarget [name], ssList [name], ssMove [back], ssSpot [clear], ssEnter [name], ssFolder [name], ssQuiet [on|off], ssRadius [metres], ssMethod [method], ssProbe.]]></en>
+Console: ssShot [auto], ssView [angle] [up], ssClear [on|off], ssOrbit [count] [distance], ssUi [seconds], ssBurst [count] [seconds], ssColors [option], ssLight [preset] [hour], ssGolden [hour], ssTarget [name], ssList [name], ssMove [back], ssSpot [clear], ssEnter [name], ssMenu [name], ssKeys [keys], ssFolder [name], ssQuiet [on|off], ssRadius [metres], ssMethod [method], ssProbe.]]></en>
         <de><![CDATA[Ein Werkzeug für Modder: Screenshots deiner Mod für den ModHub und deine Webseite, vom Spiel aufgenommen. Nur Einzelspieler.
 
 Rechte Strg + 1: sauberes Bild der aktuellen Ansicht, ohne HUD.
@@ -30,7 +30,7 @@ Rechte Strg + 6: Jede Farbe. Die aktuelle Ansicht einmal in jeder Shop-Farbe des
 
 Die Bilder sind 1920x1080, wo das Spiel es erlaubt, und landen in modSettings/FS25_ScreenshotStudio/<Modname>/.
 
-Konsole: ssShot [auto], ssView [Winkel] [hoch], ssClear [on|off], ssOrbit [Anzahl] [Abstand], ssUi [Sekunden], ssBurst [Anzahl] [Sekunden], ssColors [Option], ssLight [Preset] [Stunde], ssGolden [Stunde], ssTarget [Name], ssList [Name], ssMove [back], ssSpot [clear], ssEnter [Name], ssFolder [Name], ssQuiet [on|off], ssRadius [Meter], ssMethod [Methode], ssProbe.]]></de>
+Konsole: ssShot [auto], ssView [Winkel] [hoch], ssClear [on|off], ssOrbit [Anzahl] [Abstand], ssUi [Sekunden], ssBurst [Anzahl] [Sekunden], ssColors [Option], ssLight [Preset] [Stunde], ssGolden [Stunde], ssTarget [Name], ssList [Name], ssMove [back], ssSpot [clear], ssEnter [Name], ssMenu [Name], ssKeys [Tasten], ssFolder [Name], ssQuiet [on|off], ssRadius [Meter], ssMethod [Methode], ssProbe.]]></de>
     </description>
 
     <iconFilename>icon_screenshotStudio.png</iconFilename>

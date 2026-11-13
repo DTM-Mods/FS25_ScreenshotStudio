@@ -268,7 +268,7 @@ def shots_in(values):
     return out
 
 SS.loadMap(SS)
-names = ['ssShot', 'ssView', 'ssClear', 'ssOrbit', 'ssUi', 'ssBurst', 'ssColors', 'ssLight', 'ssGolden', 'ssTarget', 'ssList', 'ssSpot', 'ssMove', 'ssEnter', 'ssFolder', 'ssQuiet', 'ssRadius', 'ssProbe', 'ssMethod']
+names = ['ssShot', 'ssView', 'ssClear', 'ssOrbit', 'ssUi', 'ssBurst', 'ssColors', 'ssLight', 'ssGolden', 'ssTarget', 'ssList', 'ssSpot', 'ssMove', 'ssEnter', 'ssMenu', 'ssKeys', 'ssFolder', 'ssQuiet', 'ssRadius', 'ssProbe', 'ssMethod']
 check(all(T.commands[c] is not None for c in names), 'console commands registered')
 G.PlayerInputComponent.registerGlobalPlayerActionEvents(None)
 check(all(T.actions[i] is not None for i in range(1, 7)), 'six key actions registered')
@@ -887,6 +887,49 @@ run(13)
 check(SS.trying == 'render_png' and SS.autorun is not None and T.exited is None, 'quit waits for the render trial')
 run(8)
 check(SS.trying is None and SS.renderOk and T.exited is True, 'trial over: then it quits')
+
+# --- menus: ssMenu opens a screen, a dialog or an in-game menu page (a mod's page too)
+lua.execute("""
+InGameMenu = {}
+T.gui = { shown = {}, dialogs = {}, page = nil }
+T.mapFrame = { name = "InGameMenuMapFrame" }
+T.uwm = {}                                  -- Player Trading+'s page: no name of its own
+T.menu = { pageFrames = { T.mapFrame, T.uwm } }
+function T.menu:goToPage(f) T.gui.page = f end
+g_gui = { screenControllers = { [InGameMenu] = T.menu },
+          frames = { UWMFrame = { target = T.uwm } },
+          guis = { InGameMenu = {}, ShopMenu = {}, UWMOrderDialog = {}, UWMFrame = { target = T.uwm } } }
+function g_gui:showGui(n) table.insert(T.gui.shown, n) end
+function g_gui:showDialog(n) table.insert(T.gui.dialogs, n) end
+""")
+T.logs = lua.table_from([])
+msg = SS.consoleMenu(SS)
+logs = '\n'.join(lua_list(T.logs))
+check(msg.startswith('2 menu pages, 4 screens') and '1 InGameMenuMapFrame, 2 UWMFrame' in logs and 'ShopMenu' in logs,
+      f'ssMenu lists the menu pages (a mod page named by the GUI it was loaded as) and screens ({msg})')
+check(SS.consoleMenu(SS, 'uwm') == 'In-game menu, page UWMFrame' and lua_list(G.T.gui.shown)[-1] == 'InGameMenu' and same(G.T.gui.page, G.T.uwm),
+      'ssMenu uwm: the in-game menu on Player Trading+\'s page')
+check(SS.consoleMenu(SS, '1') == 'In-game menu, page InGameMenuMapFrame', 'ssMenu 1: a page by number')
+check(SS.consoleMenu(SS, 'ShopMenu') == 'Opened ShopMenu' and lua_list(G.T.gui.shown)[-1] == 'ShopMenu', 'ssMenu ShopMenu: a screen')
+check(SS.consoleMenu(SS, 'orderdialog') == 'Opened UWMOrderDialog' and lua_list(G.T.gui.dialogs)[-1] == 'UWMOrderDialog', 'a dialog with showDialog')
+check(SS.consoleMenu(SS, 'close') == 'Menus closed' and lua_list(G.T.gui.shown)[-1] == '', 'ssMenu close')
+check(SS.consoleMenu(SS, 'nothing').startswith('No screen, dialog or menu page called nothing'), 'unknown name')
+check(SS.consoleKeys(SS, 'ctrl+f', 'tractor') == 'Keys for the runner to type: ctrl+f tractor', 'ssKeys: a note for the runner')
+
+# an autorun with a menu open: the game pauses the mission's update, the GUI keeps updating
+SS.consoleMethod(SS, 'screen')
+T.exited = None
+T.saveCalls = 0
+write_autorun(['ssFolder FS25_PlayerTradingPlus', 'ssMenu uwm', 'ssUi 1', 'ssKeys ctrl+f tractor', 'ssMenu close', 'quit'])
+run(11)                                     # read, 10 s, first step
+for _ in range(400):                        # 20 s with only the GUI updating
+    T.now = T.now + 0.05
+    G.Gui.update()
+logs = [l for l in lua_list(T.logs) if 'autorun:' in l]
+check(T.saveCalls == 1 and len(files('FS25_PlayerTradingPlus/ui_')) == 1 and T.exited is True,
+      f'with only the menu updating: page opened, UI shot in the mod folder, quit ({T.saveCalls})')
+check(any('ssKeys ctrl+f tractor -> Keys for the runner to type: ctrl+f tractor' in l for l in logs),
+      'the keys are in the log for the runner')
 
 SS.deleteMap(SS)
 check(SS.camera is None and T.commands['ssShot'] is None, 'deleteMap removes camera and commands')
