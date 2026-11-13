@@ -2,6 +2,11 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.1.3
+
+- The release now has two zips: `FS25_ScreenshotStudio.zip` (the mod, into the mods folder) and `ScreenshotStudio_Tools.zip` (the game runner, contact sheets, picking, captions, checks and their shortcuts; unzip it anywhere, needs Python 3 with Pillow).
+- The mod itself is unchanged from 0.2.1.2 apart from its version number.
+
 ## 0.2.1.2
 
 First release. A tool for modders: the game takes the screenshots of a mod for the GIANTS ModHub and dtmmods.com.
