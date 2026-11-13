@@ -303,7 +303,9 @@ def parse_keys(spec):
     out = []
     for word in spec.split():
         low = word.lower()
-        if "+" in low and len(low) > 1:
+        if low == "pause":
+            out.append(("pause", 1.0))
+        elif "+" in low and len(low) > 1:
             out.append(("chord", low.split("+")))
         elif low in KEY_NAMES:
             out.append(("chord", [low]))
@@ -324,22 +326,28 @@ def send_keys(actions):
         r = u.VkKeyScanW(ord(name[0]))
         return r & 0xFF, (r >> 8) & 0xFF            # shift state: 1 shift, 2 ctrl, 4 alt
 
+    # held long enough for the game to see it in a frame (it reads key states once per frame, and a
+    # frame can take a while); in the first menu test only the last two letters of "tractor" came
     def tap(vks):
         for vk in vks:
             u.keybd_event(vk, u.MapVirtualKeyW(vk, 0), 1 if vk in EXTENDED else 0, 0)
-            time.sleep(0.03)
+            time.sleep(0.05)
+        time.sleep(0.08)
         for vk in reversed(vks):
             u.keybd_event(vk, u.MapVirtualKeyW(vk, 0), 2 | (1 if vk in EXTENDED else 0), 0)
-            time.sleep(0.03)
-        time.sleep(0.05)
+            time.sleep(0.05)
+        time.sleep(0.1)
 
     for kind, value in actions:
-        if kind == "chord":
+        if kind == "pause":
+            time.sleep(value)
+        elif kind == "chord":
             vks = []
             for name in value:
                 vk, state = vk_of(name)
                 vks.append(vk)
             tap(vks)
+            time.sleep(4.0)          # Ctrl+F opens a search box: it takes about 3 s to take letters (tests: "or", "tor")
         else:
             for ch in value:
                 vk, state = vk_of(ch)

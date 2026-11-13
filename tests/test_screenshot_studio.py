@@ -268,7 +268,7 @@ def shots_in(values):
     return out
 
 SS.loadMap(SS)
-names = ['ssShot', 'ssView', 'ssClear', 'ssOrbit', 'ssUi', 'ssBurst', 'ssColors', 'ssLight', 'ssGolden', 'ssTarget', 'ssList', 'ssSpot', 'ssMove', 'ssEnter', 'ssMenu', 'ssKeys', 'ssFolder', 'ssQuiet', 'ssRadius', 'ssProbe', 'ssMethod']
+names = ['ssShot', 'ssView', 'ssClear', 'ssOrbit', 'ssUi', 'ssBurst', 'ssColors', 'ssLight', 'ssGolden', 'ssTarget', 'ssList', 'ssSpot', 'ssMove', 'ssEnter', 'ssMenu', 'ssType', 'ssKeys', 'ssFolder', 'ssQuiet', 'ssRadius', 'ssProbe', 'ssMethod']
 check(all(T.commands[c] is not None for c in names), 'console commands registered')
 G.PlayerInputComponent.registerGlobalPlayerActionEvents(None)
 check(all(T.actions[i] is not None for i in range(1, 7)), 'six key actions registered')
@@ -895,7 +895,7 @@ T.gui = { shown = {}, dialogs = {}, page = nil }
 T.mapFrame = { name = "InGameMenuMapFrame" }
 T.uwm = {}                                  -- Player Trading+'s page: no name of its own
 T.menu = { pageFrames = { T.mapFrame, T.uwm } }
-function T.menu:goToPage(f) T.gui.page = f end
+function T.menu:goToPage(f) if f ~= T.blocked then T.gui.page = f; self.currentPage = f end end
 g_gui = { screenControllers = { [InGameMenu] = T.menu },
           frames = { UWMFrame = { target = T.uwm } },
           guis = { InGameMenu = {}, ShopMenu = {}, UWMOrderDialog = {}, UWMFrame = { target = T.uwm } } }
@@ -907,14 +907,50 @@ msg = SS.consoleMenu(SS)
 logs = '\n'.join(lua_list(T.logs))
 check(msg.startswith('2 menu pages, 4 screens') and '1 InGameMenuMapFrame, 2 UWMFrame' in logs and 'ShopMenu' in logs,
       f'ssMenu lists the menu pages (a mod page named by the GUI it was loaded as) and screens ({msg})')
-check(SS.consoleMenu(SS, 'uwm') == 'In-game menu, page UWMFrame' and lua_list(G.T.gui.shown)[-1] == 'InGameMenu' and same(G.T.gui.page, G.T.uwm),
-      'ssMenu uwm: the in-game menu on Player Trading+\'s page')
-check(SS.consoleMenu(SS, '1') == 'In-game menu, page InGameMenuMapFrame', 'ssMenu 1: a page by number')
+msg = SS.consoleMenu(SS, 'uwm')
+G.Gui.update(); G.Gui.update()
+check(msg == 'In-game menu, going to page UWMFrame' and lua_list(G.T.gui.shown)[-1] == 'InGameMenu' and same(G.T.menu.currentPage, G.T.uwm)
+      and SS.pendingPage is None and any('In-game menu on page UWMFrame' in l for l in lua_list(T.logs)),
+      'ssMenu uwm: the menu opens, then goes to Player Trading+\'s page and checks it is there')
+SS.consoleMenu(SS, '1'); G.Gui.update(); G.Gui.update()
+check(same(G.T.menu.currentPage, G.T.mapFrame), 'ssMenu 1: a page by number')
+lua.execute('T.blocked = T.uwm; T.menu.currentPage = T.mapFrame; T.menu.enabled = { [T.uwm] = function() return false end }')
+T.logs = lua.table_from([])
+SS.consoleMenu(SS, 'uwm')
+for _ in range(35): G.Gui.update()
+check(SS.pendingPage is None and any("page UWMFrame didn't open (its enabled check says false" in l for l in lua_list(T.logs)),
+      'a page that stays off: the log says so, with its enabled check')
+# in an autorun, a UI shot after a page that didn't open is skipped
+SS.autorun = lua.table_from({'steps': lua.table_from([]), 'index': 0, 'nextAt': 0, 'pictures': 0})
+check(SS.consoleUi(SS, '1') == "Skipped: the page UWMFrame didn't open" and SS.session is None, 'autorun: no UI shot of the wrong page')
+SS.consoleMenu(SS, 'close')
+check(SS.menuFailed is None, 'ssMenu close forgets it')
+SS.autorun = None
+lua.execute('T.blocked = nil')
 check(SS.consoleMenu(SS, 'ShopMenu') == 'Opened ShopMenu' and lua_list(G.T.gui.shown)[-1] == 'ShopMenu', 'ssMenu ShopMenu: a screen')
 check(SS.consoleMenu(SS, 'orderdialog') == 'Opened UWMOrderDialog' and lua_list(G.T.gui.dialogs)[-1] == 'UWMOrderDialog', 'a dialog with showDialog')
 check(SS.consoleMenu(SS, 'close') == 'Menus closed' and lua_list(G.T.gui.shown)[-1] == '', 'ssMenu close')
 check(SS.consoleMenu(SS, 'nothing').startswith('No screen, dialog or menu page called nothing'), 'unknown name')
 check(SS.consoleKeys(SS, 'ctrl+f', 'tractor') == 'Keys for the runner to type: ctrl+f tractor', 'ssKeys: a note for the runner')
+# ssType: the text straight into the screen's text field (Searchables' box reads it every frame)
+lua.execute("""
+local function field(id, visible)
+    local f = { id = id, text = "", visible = visible }
+    function f:setText(t) self.text = t end
+    function f:getText() return self.text end
+    function f:setForcePressed() end
+    function f:getIsVisible() return self.visible end
+    return f
+end
+T.hidden, T.other, T.search = field("hiddenField", false), field("nameInput", true), field("searchablesInput", true)
+g_gui.currentGui = { elements = { { elements = { T.hidden, T.other } }, { elements = { { elements = { T.search } } } } } }
+""")
+check(SS.consoleType(SS, 'tractor') == "Typed 'tractor' into searchablesInput" and G.T.search.text == 'tractor' and G.T.other.text == '',
+      'ssType: into the visible field whose id says search, deep in the screen')
+lua.execute('T.search.visible = false')
+check(SS.consoleType(SS, 'big', 'pack') == "Typed 'big pack' into nameInput", 'no search field: the first visible one, words joined')
+lua.execute('g_gui.currentGui = { elements = {} }')
+check(SS.consoleType(SS, 'x') == 'No text field on this screen', 'no field at all')
 
 # an autorun with a menu open: the game pauses the mission's update, the GUI keeps updating
 SS.consoleMethod(SS, 'screen')

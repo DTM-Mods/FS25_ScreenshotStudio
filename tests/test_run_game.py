@@ -137,6 +137,7 @@ check(w7.autostart and len(pressed7) == 1, "update dialog (quiet after auto star
 # --- ssKeys: the mod logs them, the runner types them
 check(rg.parse_keys("ctrl+f tractor enter Esc") == [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"]), ("chord", ["esc"])],
       "keys: chords, key names (any case), words to type")
+check(rg.parse_keys("ctrl+f pause tractor enter")[1] == ("pause", 1.0), "keys: pause waits a second")
 w8 = rg.LogWatch()
 w8.feed("2026-11-13 11:00:01 [ScreenshotStudio] autorun: step 4/9 ssKeys ctrl+f tractor -> Keys for the runner to type: ctrl+f tractor\n")
 typed, said = [], []

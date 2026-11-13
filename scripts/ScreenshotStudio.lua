@@ -1997,7 +1997,14 @@ function SS:consoleOrbit(count, distance)
     return self:orbit(tonumber(count), tonumber(distance)) and "Orbit started" or "Orbit not possible (see log)"
 end
 
-function SS:consoleUi(seconds) return self:uiShot(seconds) and "UI shot coming, open the menu" or "Busy or not possible" end
+function SS:consoleUi(seconds)
+    -- in an autorun, a picture of the wrong page is worse than none
+    if self.autorun ~= nil and self.menuFailed ~= nil then
+        log("UI shot skipped: the page %s didn't open", self.menuFailed)
+        return "Skipped: the page " .. self.menuFailed .. " didn't open"
+    end
+    return self:uiShot(seconds) and "UI shot coming, open the menu" or "Busy or not possible"
+end
 
 function SS:consoleGolden(hour) return self:toggleGolden(hour) end
 
@@ -2062,6 +2069,34 @@ function SS:menuPages()
     return list, menu
 end
 
+-- after ssMenu <page>: goToPage until the menu shows it (from the GUI update, a few frames)
+function SS:checkPendingPage()
+    local pp = self.pendingPage
+    if pp == nil then return end
+    pp.tries = pp.tries + 1
+    local menu = pp.menu
+    if menu.currentPage == pp.frame then
+        self.pendingPage = nil
+        log("In-game menu on page %s", pp.name)
+        return
+    end
+    if menu.goToPage ~= nil then pcall(menu.goToPage, menu, pp.frame) end
+    if pp.tries >= 30 then
+        self.pendingPage = nil
+        self.menuFailed = pp.name
+        -- why not: the page's own "enabled" check, wherever the menu keeps it
+        local enabled = "?"
+        for _, v in pairs(menu) do
+            if type(v) == "table" and type(rawget(v, pp.frame)) == "function" then
+                local ok, e = pcall(rawget(v, pp.frame))
+                enabled = ok and tostring(e) or "error"
+            end
+        end
+        log("In-game menu: page %s didn't open (its enabled check says %s; a mod's page may only be on in some cases)",
+            pp.name, enabled)
+    end
+end
+
 function SS:screenNames()
     local names = {}
     for n in pairs(g_gui ~= nil and g_gui.guis or {}) do
@@ -2082,7 +2117,9 @@ function SS:consoleMenu(...)
         log("Screens and dialogs: %s", table.concat(screens, ", "))
         return string.format("%d menu pages, %d screens/dialogs: listed in the log", #pages, #screens)
     end
+    self.menuFailed = nil
     if name == "close" then
+        self.pendingPage = nil
         pcall(g_gui.showGui, g_gui, "")
         return "Menus closed"
     end
@@ -2091,8 +2128,11 @@ function SS:consoleMenu(...)
     for _, p in ipairs(pages) do
         if (num ~= nil and p.index == num) or (num == nil and p.name:lower():find(want, 1, true)) then
             local ok, err = pcall(g_gui.showGui, g_gui, "InGameMenu")
-            if ok and menu.goToPage ~= nil then ok, err = pcall(menu.goToPage, menu, p.frame) end
-            return ok and ("In-game menu, page " .. p.name) or ("Opening the page failed: " .. tostring(err))
+            if not ok then return "Opening the menu failed: " .. tostring(err) end
+            -- the menu picks its own page as it opens: go to ours over the next frames, and check
+            self.pendingPage = { menu = menu, frame = p.frame, name = p.name, tries = 0 }
+            self.menuFailed = nil
+            return "In-game menu, going to page " .. p.name
         end
     end
     local hit
@@ -2108,6 +2148,45 @@ function SS:consoleMenu(...)
     local isDialog = hit:find("Dialog") ~= nil
     local ok, err = pcall(isDialog and g_gui.showDialog or g_gui.showGui, g_gui, hit)
     return ok and ("Opened " .. hit) or ("Opening " .. hit .. " failed: " .. tostring(err))
+end
+
+-- ssType tractor: the text straight into a text field of the open screen or dialog, no keyboard (a
+-- search box like Searchables' reads its field every frame, so it searches at once). One whose id has
+-- "search" in it wins, else the first visible one; a dialog before the screen under it.
+function SS:findTextFields()
+    local found, seen, roots = {}, {}, {}
+    if g_gui == nil then return found end
+    local dialogs = g_gui.dialogs or {}
+    for i = #dialogs, 1, -1 do table.insert(roots, dialogs[i]) end
+    if g_gui.currentGui ~= nil then table.insert(roots, g_gui.currentGui) end
+    local function walk(e, depth)
+        if type(e) ~= "table" or seen[e] or depth > 30 then return end
+        seen[e] = true
+        if type(e.setText) == "function" and type(e.getText) == "function" and type(e.setForcePressed) == "function" then
+            local visible = true
+            if e.getIsVisible ~= nil then
+                local ok, v = pcall(e.getIsVisible, e)
+                visible = not ok or v ~= false
+            end
+            if visible then table.insert(found, e) end
+        end
+        for _, c in ipairs(e.elements or {}) do walk(c, depth + 1) end
+    end
+    for _, r in ipairs(roots) do walk(r, 0) end
+    return found
+end
+
+function SS:consoleType(...)
+    local text = table.concat({ ... }, " ")
+    local fields = self:findTextFields()
+    if #fields == 0 then return "No text field on this screen" end
+    local field = fields[1]
+    for _, f in ipairs(fields) do
+        if tostring(f.id or ""):lower():find("search", 1, true) then field = f; break end
+    end
+    local ok, err = pcall(field.setText, field, text)
+    if not ok then return "Writing into the text field failed: " .. tostring(err) end
+    return string.format("Typed '%s' into %s", text, tostring(field.id or "a text field"))
 end
 
 -- ssKeys ctrl+f tractor enter: the game can't press its own keys, so in an autorun this is a note for
@@ -2320,7 +2399,7 @@ end
 SS.AUTORUN_FILE = "autorun.xml"
 SS.AUTORUN_MAX_AGE = 20       -- minutes
 SS.AUTORUN_START_S = 10       -- after the save is running: let the map stream in
-SS.AUTORUN_PAUSE = { ssLight = 3, ssGolden = 3, ssEnter = 8, ssMove = 6, ssMenu = 2, ssKeys = 4 }   -- seconds after these steps; others 1
+SS.AUTORUN_PAUSE = { ssLight = 3, ssGolden = 3, ssEnter = 8, ssMove = 6, ssMenu = 2, ssKeys = 4, ssType = 2 }   -- seconds after these steps; others 1
 
 -- "20261112_183000" -> minutes since a fixed day (only differences matter)
 local function stampMinutes(stamp)
@@ -2438,6 +2517,7 @@ SS.COMMANDS = {
     { "ssMove", "The machine with what is hitched to it to your spot or an open, flat place; [back] = where it was", "consoleMove" },
     { "ssEnter", "Get into the target, the nearest vehicle, or the one whose name contains [name]; outside camera", "consoleEnter" },
     { "ssMenu", "Open a screen, dialog or in-game menu page by (part of) its name: [name]; empty = list them; close", "consoleMenu" },
+    { "ssType", "Write [text] into the text field of the open screen (a search box), no keyboard", "consoleType" },
     { "ssKeys", "For the runner: keys to type into the game, e.g. ctrl+f tractor enter (the runner types them)", "consoleKeys" },
     { "ssFolder", "Folder name for the next shots, empty = automatic", "consoleFolder" },
     { "ssQuiet", "Hide other mods' drawing (Courseplay, AutoDrive, hints) during shots: on/off", "consoleQuiet" },
@@ -2489,6 +2569,7 @@ end
 if Gui ~= nil and Gui.update ~= nil then
     Gui.update = Utils.appendedFunction(Gui.update, function()
         SS:tick()
+        SS:checkPendingPage()
         SS:tickAutorun()     -- an open menu pauses the mission's update: the steps go on from here
     end)
 end

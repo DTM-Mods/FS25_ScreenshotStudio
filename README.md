@@ -123,13 +123,14 @@ For a script mod the pictures are its screens. **Right Ctrl + 3** (`ssUi`) waits
 | `ssMenu UWMFrame` | the in-game menu on that page (Player Trading+'s page); part of a name or the page number works too |
 | `ssMenu ShopMenu` | that screen; a name with `Dialog` opens as a dialog |
 | `ssMenu close` | closes them |
-| `ssKeys ctrl+f tractor enter` | in an autorun: the runner types these keys into the game window (a key name or a chord with `+`, else the word is typed letter by letter); Searchables needs Left Ctrl + F and a search to show anything |
+| `ssType tractor` | writes the text straight into the screen's text field (one with "search" in its id first, e.g. Searchables' box), no keyboard: Searchables searches as soon as its field changes |
+| `ssKeys ctrl+f tractor enter` | in an autorun: the runner types these keys into the game window (a key name or a chord with `+`, `pause` for a second, else the word letter by letter). Careful with letters the screen uses as keys: in the shop **C** opens the game's own search, so typing "tractor" there searched for "TOR"; for text use `ssType` |
 
 An open menu pauses the game, so the autorun's steps go on from the menu's own update. With the runner:
 
 ```
 run-game.cmd 1 --plan menus --menu UWMFrame --folder FS25_PlayerTradingPlus
-python tools/fs25_run_game.py run 1 --steps "ssFolder FS25_Searchables" "ssMenu ShopMenu" "wait 3" "ssKeys ctrl+f tractor" "wait 2" "ssUi 1" "ssMenu close" "quit"
+python tools/fs25_run_game.py run 1 --steps "ssFolder FS25_Searchables" "ssMenu ShopMenu" "wait 4" "ssType tractor" "wait 4" "ssUi 1" "ssMenu close" "quit"
 ```
 
 `--menu` (again for more) opens each menu, takes a UI shot and closes it; `--folder` is where the shots go (else `ui`).
@@ -218,6 +219,7 @@ Every batch writes `_shots_<time>_<kind>.xml` next to its pictures: per picture 
 | `ssMove [back]` | the machine with what's hitched to your spot or an open, flat place; `back`: where it was (see "Moving it to a better place") |
 | `ssSpot [clear]` | here, the way you look, is where `ssMove` puts machines on this map; `clear` forgets it |
 | `ssMenu [name\|close]` | opens a screen, dialog or in-game menu page; empty = list them (see "Menus") |
+| `ssType <text>` | writes the text into the open screen's text field (a search box) |
 | `ssKeys <keys>` | in an autorun: keys for the runner to type into the game |
 | `ssFolder [name]` | folder for the next shots (e.g. `FS25_Searchables` for UI shots); empty = automatic |
 | `ssQuiet [on\|off]` | other mods' drawing hidden during shots (on) or left in (off); empty = switch |
