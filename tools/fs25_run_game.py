@@ -45,6 +45,8 @@ PLANS = {
     "lights": ["ssEnter", "ssLight golden", "ssShot auto", "ssLight morning", "ssShot auto", "ssLight midday", "ssShot auto",
                "ssLight overcast", "ssShot auto", "ssLight off", "quit"],
     "burst": ["ssEnter", "ssBurst 10 2", "quit"],
+    "building": ["ssEnter", "ssLight golden", "ssShot auto", "ssOrbit", "ssLight morning", "ssShot auto",
+                 "ssLight overcast", "ssShot auto", "ssLight midday", "ssShot auto", "ssLight off", "quit"],
 }
 PLAN_TEXT = {
     "smoke": "everything once: lights, clean shot, orbit, burst, every color (tests the mod in the real game)",
@@ -52,6 +54,7 @@ PLAN_TEXT = {
     "colors": "every color at midday",
     "lights": "a clean shot in each light",
     "burst": "10 shots, one every 2 s (drive it yourself, or watch it stand)",
+    "building": "a building (with --target): framed in each light, golden hour orbit; no colors, no move",
 }
 
 

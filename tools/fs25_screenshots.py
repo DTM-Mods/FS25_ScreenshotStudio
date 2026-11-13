@@ -6,6 +6,8 @@
     python fs25_screenshots.py add    <repo> <image> [<image> ...] [--align left|center|right]
     python fs25_screenshots.py check  <repo>
     python fs25_screenshots.py new    [--since YYYY-MM-DD]        your newest game/Steam screenshots
+    python fs25_screenshots.py caption <repo> <n> "Title" ["more text"] [--at top] [--clear] [--site]
+                                                                  text on screenshots/NN.jpg
 
 <repo> is a mod repo folder, or just its name (FS25_PX150XL): then the repo of that name under
 the fs2025 projects folder. <folder> is a Screenshot Studio folder name (e.g. FS25_PX150XL, from
@@ -27,7 +29,7 @@ GIANTS ModHub Guidelines v5.9.1, item 5.1: at least 3 screenshots, one with the 
 working; the first one without HUD and without text; text only in English; no logos, watermarks,
 links, credits or version numbers; no white background; the store image doesn't count.
 """
-import argparse, datetime, glob, os, re, sys
+import argparse, datetime, glob, json, os, re, shutil, sys
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
@@ -42,7 +44,7 @@ STEAM = r"C:\Program Files (x86)\Steam\userdata\*\760\remote\2300320\screenshots
 PROJECTS = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 SKIP = {".git", ".venv", "node_modules", "old_mods", "backups", "__pycache__"}
 TAG = "DTM Screenshot Studio"
-KEYS = ("kind", "hud", "light", "color", "from")
+KEYS = ("kind", "hud", "light", "color", "from", "caption")
 
 # check thresholds (pixel guesses, so only warnings)
 WHITE = 235            # a channel above this counts as white
@@ -170,6 +172,139 @@ def pick(repo, folder, numbers, align):
     return add(repo, chosen, align, {f: info.get(os.path.basename(f)) for f in chosen})
 
 
+# ---------------------------------------------------------------- captions
+# Text on a picture, explaining something. ModHub allows it except on 01, in English, without
+# links, credits or version numbers (and logos/watermarks, which a caption isn't). The untouched
+# picture stays in screenshots/originals/NN.jpg and every caption is drawn on it afresh, so a caption
+# can be changed or taken off (--clear) any time; screenshots/captions.json lists them. --site: a
+# copy for dtmmods.com in screenshots/site/NN.jpg, where none of the ModHub rules apply.
+CAPTION_RULES = [
+    (r"https?://|www\.|\b[\w-]+\.(com|de|net|org|eu|io)\b", "a link"),
+    (r"\bv\d+(\.\d+)*\b|\b\d+\.\d+\.\d+(\.\d+)?\b|\bversion\b", "a version number"),
+    (r"©|\(c\)|\bcredits?\b|\b(made|created|modell?ed|textured|scripted|converted)\s+by\b", "credits"),
+]
+
+
+def caption_problems(texts, number):
+    """Why a caption breaks the ModHub rules (empty: fine)."""
+    out = []
+    if number == 1:
+        out.append("01 must have no text (ModHub: the first screenshot without HUD and without text)")
+    joined = " ".join(t for t in texts if t)
+    for pattern, what in CAPTION_RULES:
+        if re.search(pattern, joined, re.I):
+            out.append(f"it contains {what} (not allowed on ModHub)")
+    if re.search(r"[^\x00-\x7f–—’“”…°×]", joined):
+        out.append("it has letters that aren't English (ModHub: text only in English)")
+    return out
+
+
+def font(size, bold):
+    for name in (("segoeuib.ttf", "arialbd.ttf") if bold else ("segoeui.ttf", "arial.ttf")):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            pass
+    return ImageFont.load_default()
+
+
+def wrap(draw, text, fnt, width):
+    lines = []
+    for para in text.split("\n"):
+        line = ""
+        for word in para.split():
+            test = (line + " " + word).strip()
+            if draw.textlength(test, font=fnt) <= width or not line:
+                line = test
+            else:
+                lines.append(line)
+                line = word
+        lines.append(line)
+    return lines
+
+
+def draw_caption(im, title, text=None, at="bottom"):
+    """A dark band across the picture with a heading and wrapped text; returns a new image."""
+    im = im.convert("RGBA")
+    w, h = im.size
+    s = h / 1080
+    pad, gap = int(56 * s), int(10 * s)
+    ft, fx = font(int(46 * s), True), font(int(32 * s), False)
+    probe = ImageDraw.Draw(im)
+    tl = wrap(probe, title, ft, w - 2 * pad) if title else []
+    xl = wrap(probe, text, fx, w - 2 * pad) if text else []
+    lh_t, lh_x = int(58 * s), int(42 * s)
+    band = pad // 2 + len(tl) * lh_t + (gap if tl and xl else 0) + len(xl) * lh_x + pad // 2
+    y0 = h - band if at == "bottom" else 0
+    over = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(over)
+    d.rectangle((0, y0, w, y0 + band), fill=(12, 20, 16, 178))
+    d.rectangle((0, y0 + (0 if at == "bottom" else band - int(5 * s)), w, y0 + (int(5 * s) if at == "bottom" else band)),
+                fill=(233, 199, 122, 255))
+    y = y0 + pad // 2
+    for line in tl:
+        d.text((pad, y), line, font=ft, fill=(255, 255, 255, 255))
+        y += lh_t
+    y += gap if tl and xl else 0
+    for line in xl:
+        d.text((pad, y), line, font=fx, fill=(225, 232, 226, 255))
+        y += lh_x
+    return Image.alpha_composite(im, over).convert("RGB")
+
+
+def caption(repo, number, title=None, text=None, at="bottom", clear=False, site=False):
+    out = os.path.join(repo, "screenshots")
+    name = f"{number:02d}.jpg"
+    path = os.path.join(out, name)
+    if not os.path.isfile(path):
+        sys.exit(f"No {name} in {out}")
+    originals = os.path.join(out, "originals")
+    original = os.path.join(originals, name)
+    listed = os.path.join(out, "captions.json")
+    captions = {}
+    if os.path.isfile(listed):
+        with open(listed, encoding="utf-8") as f:
+            captions = json.load(f)
+    if clear:
+        if os.path.isfile(original):
+            shutil.move(original, path)
+        captions.pop(name, None)
+        print(f"{name}: caption off, the original is back")
+    else:
+        if not title and not text:
+            sys.exit("A caption needs a title or a text")
+        if not site:
+            problems = caption_problems([title, text], number)
+            if problems:
+                for p in problems:
+                    print("! " + p)
+                print("Not written. --site writes a copy for dtmmods.com (screenshots/site/), where these rules don't apply.")
+                return False
+        if not os.path.isfile(original):
+            os.makedirs(originals, exist_ok=True)
+            shutil.copy2(path, original)
+        with Image.open(original) as raw:
+            raw.load()
+            meta = from_comment(raw) or {}
+            done = draw_caption(raw, title, text, at)
+        if site:
+            dst_dir = os.path.join(out, "site")
+            os.makedirs(dst_dir, exist_ok=True)
+            dst = os.path.join(dst_dir, name)
+        else:
+            dst = path
+            meta["caption"] = "yes"
+            captions[name] = {"title": title, "text": text, "at": at}
+        done.save(dst, "JPEG", quality=90, optimize=True, comment=to_comment(meta))
+        print(f"{dst}: caption \"{title or ''}\"" + (" (dtmmods.com copy; the ModHub picture is unchanged)" if site else ""))
+    if captions:
+        with open(listed, "w", encoding="utf-8") as f:
+            json.dump(captions, f, indent=2, ensure_ascii=False)
+    elif os.path.isfile(listed):
+        os.remove(listed)
+    return True
+
+
 # ---------------------------------------------------------------- check
 def dhash(im):
     g = im.convert("L").resize((9, 8), Image.LANCZOS)
@@ -251,6 +386,16 @@ def check(repo):
             if m and "kind" in m:
                 print(f"  {n}  {label(m)}  (from {m.get('from', '?')})")
 
+    listed = os.path.join(out, "captions.json")
+    if os.path.isfile(listed):
+        with open(listed, encoding="utf-8") as f:
+            captions = json.load(f)
+        for name, c in sorted(captions.items()):
+            number = int(os.path.splitext(name)[0]) if os.path.splitext(name)[0].isdigit() else 0
+            for p in caption_problems([c.get("title"), c.get("text")], number):
+                bad(f"{name} caption: {p}")
+            print(f"  {name}  caption: {c.get('title') or ''}" + (f" / {c['text']}" if c.get("text") else ""))
+
     print(f"{len(files)} screenshot(s) in {out}" + (" - OK" if ok else ""))
     print("Check by eye: no text in 01; English only; no logos, watermarks, links, credits, version numbers.")
     return ok
@@ -321,10 +466,17 @@ def main(argv=None):
     sub.add_parser("studio").add_argument("folder", nargs="?")
     s = sub.add_parser("sheet"); s.add_argument("folder"); s.add_argument("--open", action="store_true")
     sub.add_parser("new").add_argument("--since")
+    c = sub.add_parser("caption"); c.add_argument("repo"); c.add_argument("number", type=int)
+    c.add_argument("title", nargs="?"); c.add_argument("text", nargs="?")
+    c.add_argument("--at", choices=["bottom", "top"], default="bottom")
+    c.add_argument("--clear", action="store_true", help="take the caption off (the original comes back)")
+    c.add_argument("--site", action="store_true", help="a copy for dtmmods.com in screenshots/site/ (no ModHub rules)")
     args = p.parse_args(argv)
     if getattr(args, "repo", None):
         args.repo = find_repo(args.repo)
     if args.cmd == "check": return 0 if check(args.repo) else 1
+    if args.cmd == "caption":
+        return 0 if caption(args.repo, args.number, args.title, args.text, args.at, args.clear, args.site) else 1
     if args.cmd == "add": add(args.repo, args.images, args.align)        # picking one at a time is fine
     elif args.cmd == "pick": pick(args.repo, args.folder, args.numbers, args.align)
     elif args.cmd == "studio": studio(args.folder)

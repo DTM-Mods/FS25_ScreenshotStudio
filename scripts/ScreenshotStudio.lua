@@ -60,6 +60,7 @@ SS.VIEW_ELEVATION = 12       -- degrees up
 SS.FRAME_FILL = 0.85         -- how much of the picture the machine may fill (edge to edge = 1)
 SS.MIN_DISTANCE = 4          -- metres
 SS.avoidObstacles = true     -- framed views look for walls, poles, cars in the way (ssClear off)
+SS.CROWN = 4.5               -- metres a tree's branches reach from its trunk (crowns have no collision)
 
 -- Tried in this order until one writes a file. The last one always works.
 SS.METHODS = {
@@ -851,7 +852,7 @@ end
 
 -- true, or false plus what is in the way. subjects: { [object] = true } that may be hit.
 function SS:isClear(pos, corners, subjects)
-    if raycastClosest == nil or not self.avoidObstacles then return true end
+    if not self.avoidObstacles or (raycastClosest == nil and overlapBox == nil) then return true end
     local lo, hi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
     for _, c in ipairs(corners) do
         for i = 1, 3 do lo[i], hi[i] = math.min(lo[i], c[i]), math.max(hi[i], c[i]) end
@@ -877,7 +878,7 @@ function SS:isClear(pos, corners, subjects)
             dx, dy, dz = dx / len, dy / len, dz / len
             -- stops 0.8 m before the box: parts of the machine sticking out of it don't count
             local reach = math.min(len, rayBoxEntry(cx, cy, cz, dx, dy, dz, lo, hi) or len) - 0.8
-            if reach > 0.5 then
+            if reach > 0.5 and raycastClosest ~= nil then
                 self.rayHit, self.rayDistance = nil, nil
                 pcall(raycastClosest, cx, cy, cz, dx, dy, dz, reach, "onViewRay", self, self:rayMask())
                 if self.rayHit ~= nil and self.rayHit ~= terrain then
@@ -895,6 +896,26 @@ function SS:isClear(pos, corners, subjects)
                         return false, what
                     end
                 end
+            end
+        end
+    end
+    -- trees: rays only hit the trunk, the crown has no collision. Along the line to the middle,
+    -- a trunk within CROWN metres means branches in the picture.
+    if overlapBox ~= nil and CollisionFlag ~= nil and type(CollisionFlag.TREE) == "number" then
+        local tx, ty, tz = (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2, (lo[3] + hi[3]) / 2
+        local dx, dy, dz = tx - cx, ty - cy, tz - cz
+        local len = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if len > 1 then
+            dx, dy, dz = dx / len, dy / len, dz / len
+            local reach = math.min(len, rayBoxEntry(cx, cy, cz, dx, dy, dz, lo, hi) or len) - self.CROWN
+            self.spotOwn = subjects
+            local t = 1
+            while t <= reach do
+                self.spotHits = 0
+                pcall(overlapBox, cx + dx * t, cy + dy * t, cz + dz * t, 0, 0, 0, self.CROWN, self.CROWN, self.CROWN,
+                    "onSpotHit", self, CollisionFlag.TREE, true, true, true, false)
+                if self.spotHits > 0 then return false, string.format("trees (%.0f m from the camera)", t) end
+                t = t + self.CROWN
             end
         end
     end

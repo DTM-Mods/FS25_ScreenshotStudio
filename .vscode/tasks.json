@@ -77,6 +77,6 @@
         { "id": "since", "type": "promptString", "description": "Since (YYYY-MM-DD)", "default": "2026-11-01" },
         { "id": "save", "type": "promptString", "description": "Savegame number (see Game: list savegames)" },
         { "id": "target", "type": "promptString", "description": "What to photograph, part of its name (empty: what you stand next to)", "default": "" },
-        { "id": "plan", "type": "pickString", "description": "Plan", "options": ["smoke", "orbit", "colors", "lights", "burst"], "default": "smoke" }
+        { "id": "plan", "type": "pickString", "description": "Plan", "options": ["smoke", "orbit", "colors", "lights", "burst", "building"], "default": "smoke" }
     ]
 }

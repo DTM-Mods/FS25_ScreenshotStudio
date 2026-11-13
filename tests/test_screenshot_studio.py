@@ -739,6 +739,20 @@ mid = ((t_after[0] + i_after[0]) / 2, (t_after[2] + i_after[2]) / 2)
 check(msg.endswith('to your spot') and math.dist(mid, (300, -200)) < 4, f'ssMove: to the saved spot ({msg}, {mid})')
 SS.consoleMove(SS, 'back')
 SS.consoleSpot(SS, 'clear')
+# trees: rays hit only trunks; a trunk near the line of sight means branches in the picture
+lua.execute('T.obstacles = {}')
+G.g_localPlayer.vehicle = None
+plain = pos_of(SS.viewOf(SS, T.implement))
+mid = [(plain[i] + plain[i + 3]) / 2 for i in range(3)]
+lua.execute(f'T.obstacles = {{ {{ id = 901, x = {mid[0]}, y = {mid[1] + 3.5}, z = {mid[2]}, r = 0.3 }} }}')
+T.logs = lua.table_from([])
+real_ray = G.raycastClosest
+G.raycastClosest = None                      # only the crown check can see it
+moved = pos_of(SS.viewOf(SS, T.implement))
+G.raycastClosest = real_ray
+check(math.dist(moved[:3], plain[:3]) > 3 and any('trees (' in l for l in lua_list(T.logs)),
+      'a tree crown over the line of sight (the rays miss the trunk): the view moves, the log says trees')
+lua.execute('T.obstacles = {}')
 check(SS.spots[SS.mapId(SS)] is None, 'ssSpot clear')
 lua.execute('function g_localPlayer:getPosition() return 0, 100, 0 end')
 G.g_cameraManager.active = 999

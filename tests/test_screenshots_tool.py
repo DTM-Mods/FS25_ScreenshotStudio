@@ -109,9 +109,47 @@ with Image.open(os.path.join(repo, "screenshots", "06.jpg")) as im:
 check(comment("06.jpg") == {"from": "wide_steam.jpg"},
       "a picture from elsewhere only knows where it came from")
 
+# --- captions: text on a picture, within the ModHub rules; the original kept
+shots = os.path.join(repo, "screenshots")
+with open(os.path.join(shots, "02.jpg"), "rb") as f:
+    before = f.read()
+code, out = run("caption", repo, "2", "Robot feeding", "The robot fills all four troughs on its own, every hour.")
+with Image.open(os.path.join(shots, "02.jpg")) as im:
+    im.load(); after = im.copy(); meta = tool.from_comment(im)
+with Image.open(os.path.join(shots, "originals", "02.jpg")) as im:
+    im.load(); orig = im.copy()
+diff_bottom = sum(abs(a - b) for a, b in zip(after.crop((0, 1000, 1920, 1080)).tobytes(), orig.crop((0, 1000, 1920, 1080)).tobytes()))
+diff_top = sum(abs(a - b) for a, b in zip(after.crop((0, 0, 1920, 200)).tobytes()[:30000], orig.crop((0, 0, 1920, 200)).tobytes()[:30000]))
+check(code == 0 and diff_bottom > 1000000 and diff_top < 30000 * 3, f'caption: a band at the bottom, the rest of the picture as it was ({diff_bottom}, {diff_top})')
+check(meta.get("caption") == "yes" and meta.get("kind") == "burst", f"the JPEG comment still says what it is, and that it has a caption ({meta})")
+import json
+check(json.load(open(os.path.join(shots, "captions.json")))["02.jpg"]["title"] == "Robot feeding", "listed in captions.json")
+code, out = run("caption", repo, "2", "Robot feeding at night")
+with Image.open(os.path.join(shots, "originals", "02.jpg")) as im:
+    im.load(); still = im.copy()
+check(code == 0 and still.tobytes() == orig.tobytes(), "a new caption is drawn on the original, not on the old caption")
+for args, why in [(("1", "Hero shot"), "01 must have no text"), (("3", "See dtmmods.com"), "a link"),
+                  (("3", "New in v1.2"), "a version number"), (("3", "Made by Fennell"), "credits"),
+                  (("3", "Schweinestall für 400 Tiere"), "aren't English")]:
+    code, out = run("caption", repo, *args)
+    check(code == 1 and why in out and "Not written" in out, f"refused: {args[1]!r} ({why})")
+code, out = run("caption", repo, "1", "Mehr auf dtmmods.com", "--site")
+check(code == 0 and os.path.isfile(os.path.join(shots, "site", "01.jpg")) and not os.path.isfile(os.path.join(shots, "originals", "01.jpg")) is False,
+      "--site: a dtmmods.com copy with any text, ModHub's 01 untouched")
+with Image.open(os.path.join(shots, "01.jpg")) as im:
+    check(tool.from_comment(im).get("caption") is None, "01 itself has no caption")
+code, out = run("check", repo)
+check(code == 0 and "02.jpg  caption: Robot feeding at night" in out, "check lists the captions")
+json.dump({"01.jpg": {"title": "Hero"}}, open(os.path.join(shots, "captions.json"), "w"))
+code, out = run("check", repo)
+check(code == 1 and "01.jpg caption: 01 must have no text" in out, "check: a caption on 01 breaks the rule")
+json.dump({"02.jpg": {"title": "Robot feeding at night"}}, open(os.path.join(shots, "captions.json"), "w"))
+code, out = run("caption", repo, "2", "--clear")
+with open(os.path.join(shots, "02.jpg"), "rb") as f:
+    check(f.read() == before and not os.path.isfile(os.path.join(shots, "captions.json")), "--clear: the original back, byte for byte")
+
 # --- 01 not from the studio, and fewer than 3
-for f in os.listdir(os.path.join(repo, "screenshots")):
-    os.remove(os.path.join(repo, "screenshots", f))
+shutil.rmtree(os.path.join(repo, "screenshots"))
 run("add", repo, os.path.join(studio, "wide_steam.jpg"))
 code, out = run("check", repo)
 check(code == 1 and "ModHub wants at least 3" in out and "check by eye that it has no HUD" in out

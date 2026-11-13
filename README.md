@@ -2,6 +2,9 @@
 
 A tool for modders: the game takes the screenshots of your mod for the GIANTS ModHub and dtmmods.com. **Single player only** (the mod switches itself off in multiplayer), and it never goes on the server or the ModHub.
 
+![A Ropa Tiger 6S with its RR-XL header in golden hour, framed by the mod](docs/images/hero_tiger.jpg)
+*Taken by the mod on its own: the Tiger with its header moved out of a shed, golden hour, the whole machine framed. All pictures in this README are untouched game pictures (sizes reduced), from runs on 2026-11-13.*
+
 | Key | What it does |
 |-----|--------------|
 | **Right Ctrl + 1** | **Clean shot**: the current view without HUD |
@@ -35,6 +38,8 @@ The keys can be changed in Options > Controls (Right Ctrl + 4 is still called `S
    python tools/fs25_screenshots.py sheet FS25_PX150XL --open  numbered contact sheet (_sheet.jpg)
    python tools/fs25_screenshots.py pick FS25_PX150XL FS25_PX150XL 4 11 2
    ```
+   ![A numbered contact sheet of the Pig Barn pictures](docs/images/sheet_pigbarn.jpg)
+
    `pick` puts them into the repo's `screenshots/` folder as `01.jpg`, `02.jpg`, ... in the order you give: **the first one is the clean hero shot** (no HUD, no text). The repo can be a path or just its name: the tool finds the folder of that name (with a `modDesc.xml`) under `C:\Programming\fs2025`. What the mod knows about each picture (kind, HUD, light, color) goes into the JPEG's comment.
 6. `python tools/fs25_screenshots.py check <repo>`:
    - `!` breaks a rule (exit code 1): fewer than 3, not 1920x1080, `01` is a UI shot or has the HUD
@@ -68,6 +73,20 @@ From the GIANTS ModHub Guidelines (v5.9.1, item 5.1):
 - text only in English; no logos, watermarks, links, credits or version numbers; no white background
 - the shop picture (store image) doesn't count as a screenshot
 
+### Captions
+
+Text explaining something is allowed on every screenshot but the first:
+
+```
+python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 3 "Feeding robot" "A line or two explaining the feature in this picture."
+python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 3 --clear          the original back
+python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 1 "More on dtmmods.com" --site
+```
+
+![An example caption on a Pig Barn picture](docs/images/caption_example.jpg)
+
+A dark band with a heading and wrapped text goes across the bottom (`--at top`: the top). The untouched picture is kept in `screenshots/originals/` and every caption is drawn on it afresh, so a caption can be changed any time without text piling up; `screenshots/captions.json` lists them. The tool refuses a caption on 01 and one with a link, a version number, credits ("made by", ©) or letters that aren't English, and `check` says the same. `--site` writes a copy for dtmmods.com in `screenshots/site/NN.jpg`, where none of these rules apply, and leaves the ModHub picture as it is.
+
 ## How the pictures are taken
 
 `renderScreenshot` renders the 3D view at exactly 1920x1080 whatever your monitor is, without the HUD. Lines other mods draw into the world (AutoDrive's routes) are hidden during shots, see "Other mods on the screen". GIANTS doesn't document the call; the arguments are the ones GIANTS' own editor script passes (`saveBillboards.lua` in GIANTS Editor 10.0). The first shot tries its formats one by one and remembers the first that writes a file (`settings.xml`). If none does, the mod hides the HUD and saves the screen instead; on an ultrawide monitor `fs25_screenshots.py` then crops the middle 16:9 (put the subject in the middle of the screen).
@@ -76,7 +95,7 @@ From the GIANTS ModHub Guidelines (v5.9.1, item 5.1):
 
 ## Letting the game run by itself
 
-`python tools/fs25_run_game.py run <save> [--plan smoke|orbit|colors|lights|burst]` (or `tools\run-game.cmd`) starts the game with that savegame, has Screenshot Studio take the pictures of the plan, and ends the game without saving. `saves` lists your savegames and which have the mod on; `plans` shows the steps of each plan; `--steps "ssEnter M1240" "ssOrbit 12"` runs your own; `--target "PX150"` puts `ssTarget PX150` first, so the plan photographs that wherever it stands; `--dry-run` only checks.
+`python tools/fs25_run_game.py run <save> [--plan smoke|orbit|colors|lights|burst|building] [--target <name>] [--move]` (or `tools\run-game.cmd`) starts the game with that savegame, has Screenshot Studio take the pictures of the plan, and ends the game without saving. `saves` lists your savegames and which have the mod on; `plans` shows the steps of each plan; `--steps "ssEnter M1240" "ssOrbit 12"` runs your own; `--target "PX150"` puts `ssTarget PX150` first, so the plan photographs that wherever it stands; `--dry-run` only checks.
 
 Once: install the zip yourself (the script never copies it into the mods folder), switch the mod on in a single-player save, park the machine somewhere nice, stand next to it, save. Every plan starts with `ssEnter`: into the nearest vehicle, outside camera.
 
@@ -88,9 +107,17 @@ The mod only runs `autorun.xml` in the save it names, only when it's less than 2
 
 The mod moves its own camera so the whole machine is in the picture: each vehicle has a size box (length, width, height); from the chosen angle the camera goes back until all 8 corners of every box fit the 16:9 picture, filling 85% of it, and aims at the middle. The size box is the transport size, so the corners of its work areas and its parts count too: an unfolded 12 m roller with a 4.2 m size box is framed with its wings. Folded, the work areas don't count (their nodes stay at full width on the frame). Used by every color (one view for all colors: your camera can't move it), `ssShot auto`, a target you don't sit in, and the orbit (every one of the 12 positions frames the whole machine; `ssOrbit 8 20` still takes a fixed distance). `ssView` picks the side.
 
-**Something in the way.** Before using a view, the mod casts rays from the camera to 27 points of the machine; a wall, a pole, a tree or another car hit before the machine counts as in the way (parts of the machine itself don't). Then it tries other angles: the other front corner, steeper, shallower, side-on, the rear corners, and logs what was in the way. In the orbit a blocked position steps 15 or 30 degrees to a side, or goes a little higher (never a steep look down); one still blocked is left out, and the log says how many and what was in the way. The rays go to 27 points of the machine (corners, edge and face middles), so thin poles are seen too. An angle set with `ssView` is kept (the log says it's blocked); `ssClear off` stops looking.
+![The 12 orbit pictures of the Ropa Tiger with its header](docs/images/orbit_tiger.jpg)
+*The orbit: 8 in a ring, 4 low three-quarter views, each framing the Tiger and its header.*
 
-**Buildings** are framed by their placement test area (the box the game checks when you place them: width, length and height). A flat test area gets a height of half its longer side. `ssRadius` set by hand still wins.
+**Something in the way.** Before using a view, the mod casts rays from the camera to 27 points of the machine; a wall, a pole, a tree or another car hit before the machine counts as in the way (parts of the machine itself don't). Then it tries other angles: the other front corner, steeper, shallower, side-on, the rear corners, and logs what was in the way. In the orbit a blocked position steps 15 or 30 degrees to a side, or goes a little higher (never a steep look down); one still blocked is left out, and the log says how many and what was in the way. The rays go to 27 points of the machine (corners, edge and face middles), so thin poles are seen too. Trees need more: the game gives only the trunk a collision, so rays fly through the crown; along the line of sight the mod also looks for a trunk within 4.5 m (`overlapBox` with the tree flag), which means branches in the picture (at the Pig Barn two orbit pictures were nothing but pine). An angle set with `ssView` is kept (the log says it's blocked); `ssClear off` stops looking.
+
+![An orbit picture full of pine branches](docs/images/trees_pigbarn.jpg)
+*Why the crowns are checked: an orbit position at the Pig Barn before the tree check.*
+
+**Buildings** are framed by their placement test area (the box the game checks when you place them: width, length and height). A flat test area gets a height of half its longer side. `ssRadius` set by hand still wins. For a building, `ssEnter` walks you over (see "What gets photographed") and the `building` plan of the runner takes a framed picture in each light and an orbit: `run-game.cmd 1 --plan building --target "PigBarnWithRobot"`.
+
+![The Pig Barn and the Alpaca PRX500, framed by their test areas](docs/images/buildings.jpg)
 
 ## Every color
 
@@ -98,9 +125,14 @@ The camera is the framed view (see "Framing"), the same for all colors. For each
 
 What's hitched to it changes color with it: the header on a beet harvester, the trailer on a tractor. Each of them with a color option gets its own copy in the same color (the same option if it has it, else its own body color; the color matched by name, "Red" to "Red", else by its place in the list), and all originals are hidden for the picture. The log says what came along (`with RR-XL 9x45 ProEdition (baseColor)`).
 
+![Eight of the Ropa Tiger's colors, the header in the same color](docs/images/colors_tiger.jpg)
+*Every color: the same framed view, the header changing with the Tiger (8 of its 42 colors).*
+
 ## Moving it to a better place
 
 `ssMove` takes the machine (the target, else what you sit in) with everything hitched to it to a better place, and `ssMove back` puts it back exactly where it was (leaving the game does too). It's done like the game's own teleport: every implement is unhitched, every part of every vehicle is moved with physics off (each part as high above the new ground as it was above the old), physics comes back on, and everything is hitched again on the same hitch, lowered if it was: a Ropa's header goes along. If something doesn't hitch again, the message says so.
+
+![The Tiger in its shed behind a beam, and moved 40 m into the open](docs/images/move_tiger.jpg)
 
 Where to: `ssSpot` saves where you stand and the way you look as the place for this map (in `settings.xml`; `ssSpot clear` forgets it). Without a spot, the mod looks around the machine, 40 to 320 m out, nearest first, for a place that's flat (within 0.8 m) and empty (nothing within 8 m of the machine: `overlapBox`), not in water; the machine keeps its heading. Buildings stay where they are. With the runner: `--move` puts `ssMove` after getting in and `ssMove back` before quitting (and the save is put back after the run anyway).
 
@@ -108,7 +140,11 @@ Where to: `ssSpot` saves where you stand and the way you look as the place for t
 
 Hiding the HUD leaves what other mods draw themselves: Courseplay's bar, AutoDrive's route lines and labels, the game's hint boxes ("Please start the engine first!"; `ssEnter` also starts the engine, so that one doesn't come up). The log says once per game what was muted (`Quiet: ...`). During a batch (not UI shots, not a burst with the HUD kept) the game's 2D and debug drawing functions draw nothing, for the game and every mod, and AutoDrive is given no lines to draw, so it hides them itself. Everything comes back when the batch ends (and the mod checks every frame that it did). `ssQuiet off` leaves other mods in the pictures, e.g. to show a mod's own display. Not covered: 3D objects a mod puts into the world, like Courseplay's course signs when its course display is on; switch those off in that mod.
 
+![The same view with Courseplay's bar and AutoDrive's labels, and with them hidden](docs/images/quiet_apache.jpg)
+
 ## Light
+
+![The Alpaca PRX500 in golden hour, morning mist, overcast and midday light](docs/images/lights_alpaca.jpg)
 
 The hours are game time. In winter evenings come earlier: `ssLight golden 16.5` moves golden hour. Morning mist is the game's own fog (the season's fog with lighter values, set the way FS25_RealisticWeather does it); if the game has no fog to set, the light still changes and the message says "no fog". Overcast sets the weather to `CLOUDY`. Going back to the old time puts the game's fog back; the weather stays as the last preset left it.
 
