@@ -2,6 +2,10 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.2.3
+
+- The author now shows as **DTM Mods, Fennell** in the mod list.
+
 ## 0.2.2.2
 
 - **Clicking in menus:** `ssClick` presses a button on the open dialog or screen by its text or id, for example a page's own tabs (Player Trading+'s Incoming, Outgoing, Standing orders). Only buttons that show; a disabled one isn't pressed.
