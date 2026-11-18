@@ -7,5 +7,9 @@
         <text name="input_SS_GOLDEN_HOUR" text="Screenshot Studio: light (golden hour, mist, midday, overcast, off)"/>
         <text name="input_SS_BURST" text="Screenshot Studio: burst while working (on/off)"/>
         <text name="input_SS_COLORS" text="Screenshot Studio: every color"/>
+        <text name="ss_liveQuiet" text="Hide other mods' drawing during shots"/>
+        <text name="ss_liveQuietDesc" text="Courseplay's bar, AutoDrive's labels and route lines and the game's hint boxes stay out of the pictures (console: ssQuiet)."/>
+        <text name="ss_liveClear" text="Framed views avoid things in the way"/>
+        <text name="ss_liveClearDesc" text="Framed views move around walls, poles and cars between the camera and the machine (console: ssClear)."/>
     </texts>
 </l10n>

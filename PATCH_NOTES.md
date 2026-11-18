@@ -2,6 +2,11 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.2.4
+
+- With ModMux installed, **ssQuiet** (hide other mods' drawing during shots) and **ssClear** (framed views move around
+  things in the way) are also switches on ModMux's LIVE tab, and ModMux remembers them between loads.
+
 ## 0.2.2.3
 
 - The author now shows as **DTM Mods, Fennell** in the mod list.

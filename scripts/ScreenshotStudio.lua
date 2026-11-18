@@ -2696,8 +2696,28 @@ SS.COMMANDS = {
     { "ssMethod", "Screenshot method: render_png, render_jpg, screen; empty = find again", "consoleMethod" },
 }
 
+-- ModMux's LIVE tab (only when ModMux is installed): the two console switches ssQuiet and ssClear. This mod doesn't
+-- save them, so ModMux remembers them between loads.
+function SS:registerLiveSettings()
+    local modMux = g_modMux
+    if type(modMux) ~= "table" or type(modMux.registerLiveSetting) ~= "function" then return end
+    modMux.registerLiveSetting({
+        id = "screenshotStudio.quiet", modName = self.MOD_NAME, kind = "bool",
+        title = g_i18n:getText("ss_liveQuiet"), description = g_i18n:getText("ss_liveQuietDesc"),
+        get = function() return SS.quietEnabled == true end,
+        set = function(value) SS.quietEnabled = value == true end,
+    })
+    modMux.registerLiveSetting({
+        id = "screenshotStudio.avoidObstacles", modName = self.MOD_NAME, kind = "bool",
+        title = g_i18n:getText("ss_liveClear"), description = g_i18n:getText("ss_liveClearDesc"),
+        get = function() return SS.avoidObstacles == true end,
+        set = function(value) SS.avoidObstacles = value == true end,
+    })
+end
+
 function SS:loadMap()
     self:loadSettings()
+    self:registerLiveSettings()
     for _, c in ipairs(self.COMMANDS) do addConsoleCommand(c[1], c[2], c[3], self) end
     log("Loaded. Right Ctrl + 1 clean shot, 2 orbit, 3 UI shot, 4 light, 5 burst, 6 every color. Method: %s%s",
         self.method or "not found yet", self.crashed.render_png and " (render crashed the game once: not used)" or "")

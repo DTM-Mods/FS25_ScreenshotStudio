@@ -7,5 +7,9 @@
         <text name="input_SS_GOLDEN_HOUR" text="Screenshot Studio: Licht (Goldene Stunde, Nebel, Mittag, bewölkt, aus)"/>
         <text name="input_SS_BURST" text="Screenshot Studio: Serie beim Arbeiten (an/aus)"/>
         <text name="input_SS_COLORS" text="Screenshot Studio: jede Farbe"/>
+        <text name="ss_liveQuiet" text="Zeichnungen anderer Mods bei Aufnahmen ausblenden"/>
+        <text name="ss_liveQuietDesc" text="Die Leiste von Courseplay, Beschriftungen und Routenlinien von AutoDrive und die Hinweisboxen des Spiels bleiben aus den Bildern (Konsole: ssQuiet)."/>
+        <text name="ss_liveClear" text="Ansichten weichen Hindernissen aus"/>
+        <text name="ss_liveClearDesc" text="Ansichten weichen Wänden, Masten und Autos zwischen Kamera und Maschine aus (Konsole: ssClear)."/>
     </texts>
 </l10n>
