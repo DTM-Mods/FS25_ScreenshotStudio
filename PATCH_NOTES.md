@@ -2,6 +2,13 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.2.5
+
+- **ModHub screenshots follow GIANTS' FS25 rules:** `pick` (and `add`) now put every picture into the repo twice: `modhub/screenshots/<n>.jpg` at **1600x900**, unedited, for the ModHub upload, and `screenshots/<n>.jpg` at 1920x1080 for the README and dtmmods.com. `--no-modhub` leaves a picture out of the ModHub set (e.g. one with a modder's name on it).
+- **`modhub <repo> <n> ...`** makes the ModHub set again from the README pictures with these numbers, in this order, without their captions.
+- **`check`** tests the ModHub set: at least 3, 1600x900, no caption, picture 1 without UI, a burst ("in action") shot among the first three, and reminds you to look for modder names (DTM, DTM Mods, dtmmods.com, PropaineX, Fennell) in the pictures.
+- **Captions** are for the README and dtmmods.com pictures only, and no ModHub rule applies to them any more; the ModHub set is never touched.
+
 ## 0.2.2.4
 
 - With ModMux installed, **ssQuiet** (hide other mods' drawing during shots) and **ssClear** (framed views move around

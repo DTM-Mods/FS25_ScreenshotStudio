@@ -1,5 +1,6 @@
 @echo off
-rem Copies the chosen pictures (numbers from the sheet, hero shot first) into a repo's screenshots\ folder.
+rem Copies the chosen pictures (numbers from the sheet, hero shot first) into a repo: modhub\screenshots\ (ModHub,
+rem 1600x900, unedited) and screenshots\ (README and dtmmods.com, 1920x1080). --no-modhub: screenshots\ only.
 rem   pick.cmd FS25_PX150XL 4 11 2 [--align left]   into the mod repo with the folder's name
 rem   pick.cmd                                     asks for folder, numbers, repo and alignment
 setlocal

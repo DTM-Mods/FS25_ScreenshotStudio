@@ -66,11 +66,17 @@ The keys can be changed in Options > Controls (Right Ctrl + 4 is still called `S
    ```
    ![A numbered contact sheet of the Pig Barn pictures](docs/images/sheet_pigbarn.jpg)
 
-   `pick` puts them into the repo's `screenshots/` folder as `1.jpg`, `2.jpg`, ... in the order you give: **the first one is the clean hero shot** (no HUD, no text). Folders picked before, with `01.jpg`, `02.jpg`, ...: `python tools/fs25_screenshots.py renumber <repo>` renames them (with the originals and captions). The repo can be a path or just its name: the tool finds the folder of that name (with a `modDesc.xml`) under `C:\Programming\fs2025`. What the mod knows about each picture (kind, HUD, light, color) goes into the JPEG's comment.
-6. `python tools/fs25_screenshots.py check <repo>`:
-   - `!` breaks a rule (exit code 1): fewer than 3, not 1920x1080, picture 1 is a UI shot or has the HUD
-   - `?` is worth a look: no burst ("in action") shot among them, white background, two that look almost the same, too dark, washed out
+   `pick` puts each one into the repo twice, as `1.jpg`, `2.jpg`, ... in the order you give: **the first one is the clean hero shot** (no UI):
+   - `modhub/screenshots/<n>.jpg`: **the ModHub upload**, 1600x900, unedited (never a caption)
+   - `screenshots/<n>.jpg`: for the README and dtmmods.com, 1920x1080, captions allowed (see "Captions")
+
+   `--no-modhub` puts a picture into `screenshots/` only, e.g. one with a modder's name in it. `python tools/fs25_screenshots.py modhub <repo> 3 1 5` makes the ModHub set again from the README pictures with these numbers, in this order (a captioned one from its original, without the caption). Folders picked before, with `01.jpg`, `02.jpg`, ...: `python tools/fs25_screenshots.py renumber <repo>` renames them (with the originals, captions and the ModHub set). The repo can be a path or just its name: the tool finds the folder of that name (with a `modDesc.xml`) under `C:\Programming\fs2025`. What the mod knows about each picture (kind, HUD, light, color) goes into the JPEG's comment (in the ModHub copies without a modder's name).
+6. `python tools/fs25_screenshots.py check <repo>` checks the ModHub set:
+   - `!` breaks a rule (exit code 1): no ModHub set, fewer than 3, not 1600x900, a caption on one, picture 1 is a UI shot or has the HUD
+   - `?` is worth a look: no burst ("in action") shot among the first three, white background, two that look almost the same, too dark, washed out
+   - and it lists the README set with its captions
    - `studio <folder>` and the contact sheet show the same labels (`orbit, golden`, `color Red`, `ui, HUD`)
+   - by eye: no modder names (DTM, DTM Mods, dtmmods.com, PropaineX, Fennell) anywhere in the ModHub set: monitor titles, mod lists, author columns, farm names
 
 ### Shortcuts
 
@@ -81,37 +87,37 @@ Double-click them in `tools\` (they ask for what's missing and wait before closi
 | `studio.cmd [folder]` | what's been taken, per mod; with a folder: its pictures, numbered |
 | `sheet.cmd [folder]` | contact sheet, opened when done |
 | `pick.cmd [folder n n ...]` | into the repo with the folder's name; double-clicked it shows the sheet and asks for numbers, repo and crop |
-| `check.cmd [repo]` | the ModHub rules (step 6) |
+| `check.cmd [repo]` | the ModHub rules on `modhub/screenshots/` (step 6) |
 | `new.cmd [YYYY-MM-DD]` | newest game/Steam screenshots (default: last 7 days) |
 | `run-game.cmd [save] [--plan ...]` | starts the game and takes the pictures by itself (see below) |
 | `test.cmd` | the three offline test suites |
 
 In VS Code the same are tasks: Ctrl+Shift+P > *Tasks: Run Task* > *Screenshots: ...* (the tests are the default test task). `tools\` and `.vscode\` stay out of the mod zip.
 
-The shared DTM build never puts `screenshots/` into the mod zip, so they don't count against the 128-file limit.
+The shared DTM build never puts `screenshots/` or `modhub/` into the mod zip, so they don't count against the 128-file limit.
 
 ## ModHub screenshot rules
 
-From the GIANTS ModHub Guidelines (v5.9.1, item 5.1):
+From GIANTS' FS25 ModHub guidelines, as the DTM-Mods CI sums them up (`.github/ci/README.md`, 2026-11-17):
 
-- at least **3 screenshots**, one with the machine or tool **in an actual work environment**
-- the **first one**: no HUD and no text
-- text only in English; no logos, watermarks, links, credits or version numbers; no white background
-- the shop picture (store image) doesn't count as a screenshot
+- at least **3 screenshots**, **1600x900**, in `modhub/screenshots/` (the CI warns when there are none)
+- **unedited in-game pictures**: no caption bars, frames, logos or added text, nothing AI-made or changed outside the game
+- the **first one** without UI; machinery shown **at work within the first three**; ideally a clean base-game setting
+- **no modder references** anywhere in them: no DTM, DTM Mods, dtmmods.com, PropaineX, Fennell (ModHub rejected Digital DTM for its name on the screens). Watch monitor titles, mod lists with author columns and farm names.
+- no white background; the shop picture (store image) doesn't count as a screenshot
 
 ### Captions
 
-Text explaining something is allowed on every screenshot but the first:
+Captions are for the README and dtmmods.com pictures (`screenshots/`) only; the ModHub set stays unedited:
 
 ```
 python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 3 "Feeding robot" "A line or two explaining the feature in this picture."
 python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 3 --clear          the original back
-python tools/fs25_screenshots.py caption FS25_PigBarnWithRobot 1 "More on dtmmods.com" --site
 ```
 
 ![An example caption on a Pig Barn picture](docs/images/caption_example.jpg)
 
-A dark band with a heading and wrapped text goes across the bottom (`--at top`: the top). The untouched picture is kept in `screenshots/originals/` and every caption is drawn on it afresh, so a caption can be changed any time without text piling up; `screenshots/captions.json` lists them. The tool refuses a caption on picture 1 and one with a link, a version number, credits ("made by", ©) or letters that aren't English, and `check` says the same. `--site` writes a copy for dtmmods.com in `screenshots/site/<n>.jpg`, where none of these rules apply, and leaves the ModHub picture as it is.
+A dark band with a heading and wrapped text goes across the bottom (`--at top`: the top). The untouched picture is kept in `screenshots/originals/` and every caption is drawn on it afresh, so a caption can be changed any time without text piling up; `screenshots/captions.json` lists them. No ModHub rule applies to them, since they never go to ModHub; `modhub/screenshots/<n>.jpg` is never touched. `--site` (from when captions could go to ModHub) still writes a captioned copy in `screenshots/site/<n>.jpg` and leaves `screenshots/<n>.jpg` as it is.
 
 From PowerShell, quote marks inside a caption get lost (Windows PowerShell 5.1 drops them when it starts Python): write `\"` for each, or run the command from cmd or Git Bash.
 

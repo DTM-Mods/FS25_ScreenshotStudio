@@ -2,9 +2,10 @@
 
     python tests/test_screenshots_tool.py
 
-A Screenshot Studio folder with a _shots_*.xml list: pick carries kind/HUD/light/color into the
-JPEG comment; check stops a UI shot as 01, finds the burst shot, a white background, a
-near duplicate and a dark picture.
+A Screenshot Studio folder with a _shots_*.xml list: pick writes the README set (1920x1080) and the
+ModHub set (modhub/screenshots/, 1600x900, unedited) and carries kind/HUD/light/color into the JPEG
+comment; check stops a UI shot as 1, a captioned or wrong-sized ModHub picture and a missing set, finds
+the burst shot, a white background, a near duplicate and a dark picture; captions stay on the README set.
 """
 import contextlib, importlib.util, io, os, random, shutil, sys, tempfile
 from PIL import Image, ImageDraw
@@ -83,36 +84,46 @@ code, out = run("pick", repo, studio, str(n["ui_20261112_120100_01.png"]), str(n
                 str(n["burst_20261112_120200_01.png"]))
 check(code == 0, "pick exits 0 even when check complains")
 code, out = run("check", repo)
-check(code == 1 and "1.jpg is a ui shot" in out, "check: a UI shot as 01 breaks the rule")
+check(code == 1 and "1.jpg is a ui shot" in out, "check: a UI shot as 1 breaks the rule")
 check("in action: 3.jpg" in out, "check: the burst shot counts as in action")
-def comment(name):
-    with Image.open(os.path.join(repo, "screenshots", name)) as im:
+shots = os.path.join(repo, "screenshots")
+hub = os.path.join(repo, "modhub", "screenshots")
+def comment(name, folder=None):
+    with Image.open(os.path.join(folder or shots, name)) as im:
         return tool.from_comment(im)
 meta = comment("2.jpg")
 check(meta == {"kind": "clean", "hud": "false", "light": "golden", "from": "clean_20261112_120000_01.png"},
       f"JPEG comment keeps what it is ({meta})")
+with Image.open(os.path.join(hub, "2.jpg")) as im:
+    raw = im.info.get("comment") or b""
+    check(im.size == (1600, 900) and raw.startswith(b"shot;") and b"DTM" not in raw,
+          f"pick also writes the ModHub copy: 1600x900, no modder name in its comment ({im.size}, {raw[:30]})")
+check(comment("2.jpg", hub) == meta, "the ModHub copy knows what it is too")
 
 # --- clean one first, plus a white background, a duplicate, a dark one and a Steam shot
-for f in os.listdir(os.path.join(repo, "screenshots")):
-    os.remove(os.path.join(repo, "screenshots", f))
+shutil.rmtree(shots); shutil.rmtree(os.path.join(repo, "modhub"))
 code, out = run("pick", repo, studio, *(str(n[f]) for f in ["clean_20261112_120000_01.png", "burst_20261112_120200_01.png",
                 "burst_20261112_120200_02.png", "color_20261112_120300_01_Red.png", "orbit_20261112_120400_01.png",
                 "wide_steam.jpg"]))
 code, out = run("check", repo)
-check(code == 0 and "6 screenshot(s)" in out and "- OK" in out, "check passes with a clean 01")
+check(code == 0 and "6 screenshot(s)" in out and "- OK" in out, "check passes with a clean 1")
 check("? 2.jpg and 3.jpg look almost the same" in out, "near duplicate found")
 check("? 4.jpg: looks like a white background" in out, "white background found")
 check("? 5.jpg: very dark" in out, "dark picture found")
 check("? 1.jpg" not in out and "? 6.jpg: looks like" not in out, "no false alarms on the normal ones")
-with Image.open(os.path.join(repo, "screenshots", "6.jpg")) as im:
-    check(im.size == (1920, 1080), "ultrawide cropped to 1920x1080")
+check("no modder names" in out and "Fennell" in out, "check reminds of the modder names to look for")
+with Image.open(os.path.join(shots, "6.jpg")) as im:
+    check(im.size == (1920, 1080), "ultrawide cropped to 1920x1080 for the README")
+with Image.open(os.path.join(hub, "6.jpg")) as im:
+    check(im.size == (1600, 900), "... and 1600x900 for ModHub")
 check(comment("6.jpg") == {"from": "wide_steam.jpg"},
       "a picture from elsewhere only knows where it came from")
 
-# --- captions: text on a picture, within the ModHub rules; the original kept
-shots = os.path.join(repo, "screenshots")
+# --- captions: README/site pictures only; the original kept; the ModHub copy untouched
 with open(os.path.join(shots, "2.jpg"), "rb") as f:
     before = f.read()
+with open(os.path.join(hub, "2.jpg"), "rb") as f:
+    hub_before = f.read()
 code, out = run("caption", repo, "2", "Robot feeding", "The robot fills all four troughs on its own, every hour.")
 with Image.open(os.path.join(shots, "2.jpg")) as im:
     im.load(); after = im.copy(); meta = tool.from_comment(im)
@@ -122,54 +133,76 @@ diff_bottom = sum(abs(a - b) for a, b in zip(after.crop((0, 1000, 1920, 1080)).t
 diff_top = sum(abs(a - b) for a, b in zip(after.crop((0, 0, 1920, 200)).tobytes()[:30000], orig.crop((0, 0, 1920, 200)).tobytes()[:30000]))
 check(code == 0 and diff_bottom > 1000000 and diff_top < 30000 * 3, f'caption: a band at the bottom, the rest of the picture as it was ({diff_bottom}, {diff_top})')
 check(meta.get("caption") == "yes" and meta.get("kind") == "burst", f"the JPEG comment still says what it is, and that it has a caption ({meta})")
+with open(os.path.join(hub, "2.jpg"), "rb") as f:
+    check(f.read() == hub_before, "the ModHub copy stays unedited")
 import json
 check(json.load(open(os.path.join(shots, "captions.json")))["2.jpg"]["title"] == "Robot feeding", "listed in captions.json")
 code, out = run("caption", repo, "2", "Robot feeding at night")
 with Image.open(os.path.join(shots, "originals", "2.jpg")) as im:
     im.load(); still = im.copy()
 check(code == 0 and still.tobytes() == orig.tobytes(), "a new caption is drawn on the original, not on the old caption")
-for args, why in [(("1", "Hero shot"), "picture 1 must have no text"), (("3", "See dtmmods.com"), "a link"),
-                  (("3", "New in v1.2"), "a version number"), (("3", "Made by Fennell"), "credits"),
-                  (("3", "Schweinestall für 400 Tiere"), "aren't English")]:
-    code, out = run("caption", repo, *args)
-    check(code == 1 and why in out and "Not written" in out, f"refused: {args[1]!r} ({why})")
-code, out = run("caption", repo, "1", "Mehr auf dtmmods.com", "--site")
-check(code == 0 and os.path.isfile(os.path.join(shots, "site", "1.jpg")) and not os.path.isfile(os.path.join(shots, "originals", "1.jpg")) is False,
-      "--site: a dtmmods.com copy with any text, ModHub's 01 untouched")
-with Image.open(os.path.join(shots, "1.jpg")) as im:
-    check(tool.from_comment(im).get("caption") is None, "01 itself has no caption")
+code, out = run("caption", repo, "3", "Mehr auf dtmmods.com, made by Fennell, v1.2")
+check(code == 0, "README captions have no ModHub rules (links, names, versions, German)")
+code, out = run("caption", repo, "1", "Hero shot")
+check(code == 0, "a caption on the README's picture 1 is fine too")
 code, out = run("check", repo)
-check(code == 0 and "2.jpg  caption: Robot feeding at night" in out, "check lists the captions")
-json.dump({"1.jpg": {"title": "Hero"}}, open(os.path.join(shots, "captions.json"), "w"))
-code, out = run("check", repo)
-check(code == 1 and "1.jpg caption: picture 1 must have no text" in out, "check: a caption on 01 breaks the rule")
-json.dump({"2.jpg": {"title": "Robot feeding at night"}}, open(os.path.join(shots, "captions.json"), "w"))
+check(code == 0 and "2.jpg  caption: Robot feeding at night" in out, "check lists the captions and still passes")
 code, out = run("caption", repo, "2", "--clear")
 with open(os.path.join(shots, "2.jpg"), "rb") as f:
-    check(f.read() == before and not os.path.isfile(os.path.join(shots, "captions.json")), "--clear: the original back, byte for byte")
+    check(f.read() == before, "--clear: the original back, byte for byte")
 
-# --- renumber: 01.jpg, 02.jpg (older picks) -> 1.jpg, 2.jpg, with originals and captions
+# --- modhub: the ModHub set again from README pictures, captioned ones from their originals
+code, out = run("modhub", repo, "3", "1", "5")
+check(code == 0 and sorted(os.listdir(hub)) == ["1.jpg", "2.jpg", "3.jpg"], f"modhub: 3 pictures, the old set gone ({sorted(os.listdir(hub))})")
+with Image.open(os.path.join(hub, "1.jpg")) as im:
+    im.load(); first = im.copy(); m1 = tool.from_comment(im)
+with Image.open(os.path.join(shots, "originals", "3.jpg")) as im:
+    plain = im.convert("RGB").resize((1600, 900))
+diff = sum(abs(a - b) for a, b in zip(first.crop((0, 830, 1600, 900)).tobytes(), plain.crop((0, 830, 1600, 900)).tobytes()))
+check(diff < 1600 * 70 * 3 * 4 and "caption" not in (m1 or {}) and (m1 or {}).get("kind") == "burst",
+      f"modhub 1.jpg is README 3 without its caption ({diff}, {m1})")
+code, out = run("check", repo)
+check(code == 0 and "in action: 1.jpg" in out, "the new set passes, the burst shot first")
+
+# --- check: a captioned or wrong-sized ModHub picture, no ModHub set at all
+first.save(os.path.join(hub, "2.jpg"), comment=tool.to_comment({"kind": "clean", "caption": "yes"}, tool.MODHUB_TAG))
+Image.new("RGB", (1920, 1080), (90, 120, 60)).save(os.path.join(hub, "3.jpg"))
+code, out = run("check", repo)
+check(code == 1 and "2.jpg has a caption" in out and "3.jpg is 1920x1080, not 1600x900" in out,
+      "check: a caption or 1920x1080 in the ModHub set breaks the rules")
+shutil.rmtree(os.path.join(repo, "modhub"))
+code, out = run("check", repo)
+check(code == 1 and "no ModHub set" in out, "check: no ModHub set breaks the rules")
+
+# --- --no-modhub: README only
+code, out = run("pick", repo, studio, str(n["clean_20261112_120000_01.png"]), "--no-modhub")
+check(not os.path.isdir(hub) and os.path.isfile(os.path.join(shots, "7.jpg")), "--no-modhub: README/site only")
+
+# --- renumber: 01.jpg, 02.jpg (older picks) -> 1.jpg, 2.jpg, with originals, captions and the ModHub set
 old = os.path.join(tmp, "old", "FS25_Old")
 os.makedirs(os.path.join(old, "screenshots", "originals"))
-for n in ("01", "02", "10"):
-    scene(os.path.join(old, "screenshots", f"{n}.jpg"), int(n))
+os.makedirs(os.path.join(old, "modhub", "screenshots"))
+for n_ in ("01", "02", "10"):
+    scene(os.path.join(old, "screenshots", f"{n_}.jpg"), int(n_))
 scene(os.path.join(old, "screenshots", "originals", "02.jpg"), 2)
+scene(os.path.join(old, "modhub", "screenshots", "01.jpg"), 1, size=(1600, 900))
 json.dump({"02.jpg": {"title": "Old caption"}}, open(os.path.join(old, "screenshots", "captions.json"), "w"))
 code, out = run("renumber", old)
 names = sorted(os.listdir(os.path.join(old, "screenshots")))
 check(code == 0 and names == ["1.jpg", "10.jpg", "2.jpg", "captions.json", "originals"]
       and os.listdir(os.path.join(old, "screenshots", "originals")) == ["2.jpg"]
+      and os.listdir(os.path.join(old, "modhub", "screenshots")) == ["1.jpg"]
       and list(json.load(open(os.path.join(old, "screenshots", "captions.json")))) == ["2.jpg"],
-      f"renumber: plain numbers, originals and captions too ({names})")
+      f"renumber: plain numbers, originals, captions and the ModHub set too ({names})")
 check([os.path.basename(f) for f in tool.numbered(os.path.join(old, "screenshots")).values()] == ["1.jpg", "2.jpg", "10.jpg"],
       "in number order: 2 before 10")
 
-# --- 01 not from the studio, and fewer than 3
-shutil.rmtree(os.path.join(repo, "screenshots"))
+# --- 1 not from the studio, and fewer than 3
+shutil.rmtree(shots)
 run("add", repo, os.path.join(studio, "wide_steam.jpg"))
 code, out = run("check", repo)
-check(code == 1 and "ModHub wants at least 3" in out and "check by eye that it has no HUD" in out
-      and "none is a burst shot" in out, "one Steam shot: too few, HUD unknown, nothing in action")
+check(code == 1 and "ModHub wants at least 3" in out and "check by eye that it has no UI" in out
+      and "none is a burst shot" in out, "one Steam shot: too few, UI unknown, nothing in action")
 
 shutil.rmtree(tmp, ignore_errors=True)
 print()

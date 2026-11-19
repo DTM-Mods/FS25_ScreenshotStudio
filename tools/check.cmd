@@ -1,5 +1,5 @@
 @echo off
-rem At least 3 screenshots, all 1920x1080, in a repo's screenshots\ folder.
+rem The ModHub set in a repo's modhub\screenshots\ folder: at least 3, all 1600x900, unedited; lists screenshots\ too.
 rem   check.cmd [FS25_PX150XL]     repo name or path; none: asks
 setlocal
 set "REPO=%~1"
