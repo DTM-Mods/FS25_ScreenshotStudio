@@ -2,6 +2,11 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.2.6
+
+- **Game runner:** `--resolution 1600x900` sets the game's resolution for the run, so menu shots come out that size (through DTM-Mods' `fs25_borderless.ps1 -Resolution` when it's there); `ssKeys` knows the number pad (`num0` ... `num9`, e.g. `lalt+num0` for AutoDrive's window) and a middle click (`mclick@x,y`).
+- **Picking 1600x900 shots:** `pick` takes shots from a 1600x900 run and keeps the README copy at 1600x900 instead of enlarging it (before, anything under 1080p was skipped).
+
 ## 0.2.2.5
 
 - **ModHub screenshots follow GIANTS' FS25 rules:** `pick` (and `add`) now put every picture into the repo twice: `modhub/screenshots/<n>.jpg` at **1600x900**, unedited, for the ModHub upload, and `screenshots/<n>.jpg` at 1920x1080 for the README and dtmmods.com. `--no-modhub` leaves a picture out of the ModHub set (e.g. one with a modder's name on it).

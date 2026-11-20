@@ -328,18 +328,20 @@ KEY_NAMES = {"enter": 0x0D, "return": 0x0D, "esc": 0x1B, "escape": 0x1B, "tab": 
              "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
              "ctrl": 0x11, "alt": 0x12, "shift": 0x10, **{f"f{i}": 0x6F + i for i in range(1, 13)},
              # one side only, for bindings like Right Shift + P
-             "lshift": 0xA0, "rshift": 0xA1, "lctrl": 0xA2, "rctrl": 0xA3, "lalt": 0xA4, "ralt": 0xA5}
+             "lshift": 0xA0, "rshift": 0xA1, "lctrl": 0xA2, "rctrl": 0xA3, "lalt": 0xA4, "ralt": 0xA5,
+             # the number pad, for bindings like AutoDrive's Left Alt + Numpad 0 (num0 ... num9)
+             **{f"num{i}": 0x60 + i for i in range(10)}}
 EXTENDED = {0x2E, 0x26, 0x28, 0x25, 0x27, 0x24, 0x23, 0x21, 0x22, 0xA3, 0xA5}
 
 
-MOUSE_WORD = re.compile(r"^(click|rclick|move|wheel)@(\d+),(\d+)$")
+MOUSE_WORD = re.compile(r"^(click|rclick|mclick|move|wheel)@(\d+),(\d+)$")
 
 
 def parse_keys(spec):
     """'ctrl+f tractor enter' -> [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"])];
     'click@960,540' -> [("mouse", ("click", 960, 540))]: the mouse to that point of a 1920x1080 picture of the
-    game window (scaled to its real size), then a left click (rclick: right click, move: no click, wheel: the
-    wheel 5 notches down there, to scroll a list)"""
+    game window (scaled to its real size), then a left click (rclick: right click, mclick: middle click, e.g.
+    AutoDrive's mouse cursor; move: no click, wheel: the wheel 5 notches down there, to scroll a list)"""
     out = []
     for word in spec.split():
         low = word.lower()
@@ -384,7 +386,7 @@ def send_keys(actions):
                 u.mouse_event(0x0800, 0, 0, -120 & 0xFFFFFFFF, 0)
                 time.sleep(0.25)
         elif kind != "move":
-            down, up = (0x0002, 0x0004) if kind == "click" else (0x0008, 0x0010)
+            down, up = {"click": (0x0002, 0x0004), "rclick": (0x0008, 0x0010), "mclick": (0x0020, 0x0040)}[kind]
             u.mouse_event(down, 0, 0, 0, 0)
             time.sleep(0.12)
             u.mouse_event(up, 0, 0, 0, 0)
@@ -548,8 +550,37 @@ def wait_for(cond, seconds, poll=1.0):
     return cond()
 
 
+# DTM-Mods' Play FS25 window script: with -Resolution it only puts that resolution into game.xml
+BORDERLESS = os.path.join(os.path.dirname(REPO), "_tools", "fs25_borderless.ps1")
+RESOLUTION = re.compile(r"^(\d{3,5})x(\d{3,5})$")
+
+
+def set_resolution(res, game_xml=None, script=BORDERLESS):
+    """The game's resolution in game.xml (read when the game starts), e.g. '1600x900' for screenshots of that
+    size: through fs25_borderless.ps1 -Resolution when it's there, else straight into game.xml. Windowed
+    mode keeps the picture exactly that size. Returns a line for the output."""
+    m = RESOLUTION.match(res or "")
+    if not m:
+        sys.exit(f"--resolution wants WIDTHxHEIGHT, e.g. 1600x900 (got {res!r})")
+    game_xml = game_xml or os.path.join(DOCS, "game.xml")
+    if script and os.path.isfile(script):
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+                            "-Resolution", res], capture_output=True, text=True)
+        return (r.stdout or r.stderr).strip().splitlines()[-1] if (r.stdout or r.stderr).strip() else "fs25_borderless.ps1 said nothing"
+    with open(game_xml, encoding="utf-8") as f:
+        text = f.read()
+    mode = re.search(r"<fullscreenMode>\s*([^<\s]+)", text)
+    new = re.sub(r"(<display>[\s\S]*?<width>)\d+(</width>)", rf"\g<1>{m.group(1)}\2", text, count=1)
+    new = re.sub(r"(<display>[\s\S]*?<height>)\d+(</height>)", rf"\g<1>{m.group(2)}\2", new, count=1)
+    if new != text:
+        with open(game_xml, "w", encoding="utf-8", newline="") as f:
+            f.write(new)
+    note = "" if mode and mode.group(1) == "windowed" else f" (Display Mode is {mode.group(1) if mode else '?'}: set Windowed for exactly this size)"
+    return f"Resolution {res} in game.xml{note}"
+
+
 def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
-        start_timeout=900, timeout=2400, press=True, without=None):
+        start_timeout=900, timeout=2400, press=True, without=None, resolution=None):
     saves = {s["index"]: s for s in savegames()}
     if save not in saves:
         sys.exit(f"No savegame{save} in {DOCS} (see: saves)")
@@ -575,12 +606,16 @@ def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
         print(f"  {i:2d}. {s}")
     if without:
         print(f"switched off for this run only: {', '.join(without)}")
+    if resolution:
+        print(f"resolution for this run: {resolution} (menu and UI shots come out this size)")
     if dry_run:
         print("Dry run: nothing written, game not started.")
         return 0
     steam = steam_exe()
     if steam is None:
         sys.exit("Steam not found")
+    if resolution:
+        print(set_resolution(resolution))
 
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     zip_path, before = backup(sg["path"], stamp=stamp)
@@ -685,6 +720,9 @@ def main(argv=None):
     r.add_argument("--no-press", action="store_true", help="don't press START on the loading screen (you do)")
     r.add_argument("--without-mod", action="append", metavar="MOD",
                    help="switch a mod off in the save for this run only, e.g. one that clashes: --without-mod FS25_OldMod")
+    r.add_argument("--resolution", metavar="WxH",
+                   help="the game's resolution for this run, e.g. 1600x900 (game.xml, through DTM-Mods' "
+                        "fs25_borderless.ps1 -Resolution when it's there); Play FS25 sets the screen-filling one again")
     args = p.parse_args(argv)
     if args.cmd == "saves":
         rows = savegames()
@@ -701,7 +739,7 @@ def main(argv=None):
     steps = with_move(with_target(list(args.steps) if args.steps else list(PLANS[args.plan]), args.target), args.move)
     steps = with_menus(steps, args.menu, args.folder)
     return run(args.save, steps, keep_open=args.keep_open, sheet=args.sheet, anyway=args.anyway, dry_run=args.dry_run,
-               press=not args.no_press, without=args.without_mod)
+               press=not args.no_press, without=args.without_mod, resolution=args.resolution)
 
 
 def with_menus(steps, menus, folder=None):

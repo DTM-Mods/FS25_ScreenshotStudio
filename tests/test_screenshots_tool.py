@@ -174,6 +174,16 @@ shutil.rmtree(os.path.join(repo, "modhub"))
 code, out = run("check", repo)
 check(code == 1 and "no ModHub set" in out, "check: no ModHub set breaks the rules")
 
+# --- a 1600x900 shot (a run with --resolution 1600x900): 1600x900 in both sets, never enlarged; smaller: skipped
+small = os.path.join(tmp, "small_1600.png"); scene(small, 9, size=(1600, 900))
+tiny = os.path.join(tmp, "tiny_1280.png"); scene(tiny, 10, size=(1280, 720))
+code, out = run("add", repo, small, tiny, "--no-modhub")
+last = max(tool.numbered(shots))
+with Image.open(tool.numbered(shots)[last]) as im:
+    check(im.size == (1600, 900) and "tiny_1280.png" in out and "skipped" in out,
+          f"a 1600x900 shot stays 1600x900, a 1280x720 one is skipped ({im.size})")
+os.remove(tool.numbered(shots)[last])
+
 # --- --no-modhub: README only
 code, out = run("pick", repo, studio, str(n["clean_20261112_120000_01.png"]), "--no-modhub")
 check(not os.path.isdir(hub) and os.path.isfile(os.path.join(shots, "7.jpg")), "--no-modhub: README/site only")

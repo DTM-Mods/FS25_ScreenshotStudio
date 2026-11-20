@@ -138,6 +138,9 @@ check(w7.autostart and len(pressed7) == 1, "update dialog (quiet after auto star
 check(rg.parse_keys("ctrl+f tractor enter Esc") == [("chord", ["ctrl", "f"]), ("text", "tractor"), ("chord", ["enter"]), ("chord", ["esc"])],
       "keys: chords, key names (any case), words to type")
 check(rg.parse_keys("ctrl+f pause tractor enter")[1] == ("pause", 1.0), "keys: pause waits a second")
+check(rg.parse_keys("lalt+num0") == [("chord", ["lalt", "num0"])] and rg.KEY_NAMES["num0"] == 0x60 and rg.KEY_NAMES["num9"] == 0x69,
+      "numpad keys: lalt+num0 (AutoDrive's HUD)")
+check(rg.parse_keys("mclick@960,540") == [("mouse", ("mclick", 960, 540))], "middle click: mclick@x,y")
 check(rg.parse_keys("rshift+p lalt+m") == [("chord", ["rshift", "p"]), ("chord", ["lalt", "m"])] and rg.KEY_NAMES["rshift"] == 0xA1,
       "keys: left and right modifiers by name (Right Shift + P)")
 check(rg.parse_keys("click@235,250 rclick@960,540 move@10,20 wheel@900,600 e") == [("mouse", ("click", 235, 250)), ("mouse", ("rclick", 960, 540)), ("mouse", ("move", 10, 20)), ("mouse", ("wheel", 900, 600)), ("text", "e")],
@@ -229,6 +232,21 @@ check(gone == ["FS25_UtilitiesWasteManagement"] and "Utilities" not in after and
 check(rg.without_mods(cfile, None) == [] and rg.without_mods(cfile, ["FS25_Nope"]) == [], "nothing asked or not there: nothing removed")
 rg.put_back(cx, bz, "careerSavegame.xml")
 check(open(cfile, encoding="utf-8").read() == original, "mod list put back from the backup")
+
+# --- --resolution: game.xml straight (no fs25_borderless.ps1)
+gx = os.path.join(tmp, "game.xml")
+open(gx, "w", encoding="utf-8").write("<game>\n  <graphic>\n    <display>\n      <width>5104</width>\n      <height>1401</height>\n"
+                                      "      <fullscreenMode>windowed</fullscreenMode>\n      <previousWidth>1920</previousWidth>\n"
+                                      "    </display>\n  </graphic>\n</game>\n")
+line = rg.set_resolution("1600x900", game_xml=gx, script=None)
+t = open(gx, encoding="utf-8").read()
+check("<width>1600</width>" in t and "<height>900</height>" in t and "<previousWidth>1920</previousWidth>" in t
+      and "Display Mode" not in line, f"--resolution: width and height in game.xml, nothing else ({line})")
+try:
+    rg.set_resolution("16x9", game_xml=gx, script=None)
+    check(False, "--resolution 16x9 refused")
+except SystemExit as e:
+    check("WIDTHxHEIGHT" in str(e), "--resolution 16x9 refused")
 
 shutil.rmtree(tmp, ignore_errors=True)
 print()

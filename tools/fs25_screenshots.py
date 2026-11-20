@@ -17,7 +17,8 @@ modSettings/FS25_ScreenshotStudio/) or any folder path. The numbers are the ones
 
 Two sets per repo:
   modhub/screenshots/<n>.jpg   the ModHub upload: 1600x900, unedited (no caption, nothing added)
-  screenshots/<n>.jpg          README and dtmmods.com: 1920x1080, captions allowed (caption)
+  screenshots/<n>.jpg          README, dtmmods.com, KingMods: 1920x1080 (1600x900 from a 1600x900 shot, never
+                               enlarged), captions allowed (caption)
 
 pick/add: crop each picture to 16:9 (ultrawide 32:9 shots: the middle, or --align left/right) and save it in
 both sets (next free number in each). The order is the ModHub order: pick the clean, UI-free hero shot first.
@@ -174,10 +175,12 @@ def add(repo, images, align, metas=None, modhub=True):
     for i, src in enumerate(images):
         with Image.open(src) as raw:
             im = raw.convert("RGB")
-        if min(im.size) < 1080:
-            print(f"! {src}: {im.size[0]}x{im.size[1]} is smaller than 1080p, skipped")
+        im = crop_16_9(im, align)
+        if im.size[1] < MH:
+            print(f"! {src}: {im.size[0]}x{im.size[1]} after the 16:9 crop is smaller than {MW}x{MH}, skipped")
             continue
-        im = crop_16_9(im, align).resize((W, H), Image.LANCZOS)
+        # README copy: 1920x1080, or 1600x900 from a smaller shot (a run with --resolution 1600x900): never enlarged
+        im = im.resize((W, H) if im.size[1] >= H else (MW, MH), Image.LANCZOS)
         meta = dict((metas or {}).get(src) or {})
         meta["from"] = os.path.basename(src)
         n += 1
@@ -474,8 +477,8 @@ def check(repo):
     print(f"README / dtmmods.com set, screenshots/: {len(readme)} picture(s)")
     for f in readme:
         with Image.open(f) as im:
-            if im.size != (W, H):
-                print(f"? {os.path.basename(f)} is {im.size[0]}x{im.size[1]}, not {W}x{H}")
+            if im.size not in ((W, H), (MW, MH)):
+                print(f"? {os.path.basename(f)} is {im.size[0]}x{im.size[1]}, not {W}x{H} (or {MW}x{MH})")
     listed = os.path.join(out, "captions.json")
     if os.path.isfile(listed):
         with open(listed, encoding="utf-8") as f:
