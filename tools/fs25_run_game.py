@@ -23,11 +23,12 @@ plans start with ssEnter, which gets into the nearest vehicle and switches to an
 After loading, the game waits on a START screen: the script presses Enter in the game window for you
 (--no-press: you do); the steps start 10 s after the save is running.
 """
-import argparse, datetime, glob, os, re, shutil, subprocess, sys, time, zipfile
+import argparse, datetime, glob, json, os, re, shutil, subprocess, sys, time, zipfile
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fs25_screenshots as shots  # noqa: E402
+import ss_prompt  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MOD_NAME = "FS25_ScreenshotStudio"
@@ -167,6 +168,47 @@ def without_mods(career_xml, names):
         with open(career_xml, "w", encoding="utf-8", newline="") as f:
             f.write(text)
     return removed
+
+
+def mod_info(name, mods_dir=None):
+    """(title, version) from a mod zip in the mods folder, or None."""
+    path = os.path.join(mods_dir or os.path.join(DOCS, "mods"), name + ".zip")
+    try:
+        with zipfile.ZipFile(path) as zf:
+            root = ET.fromstring(zf.read("modDesc.xml"))
+    except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError):
+        return None
+    title = root.findtext("title/en") or name
+    return title.strip(), (root.findtext("version") or "1.0.0.0").strip()
+
+
+def with_mods(career_xml, names, mods_dir=None):
+    """Switch mods on in a careerSavegame.xml for this run only (the backup puts them back): a line for each
+    one from the mods folder that isn't in the list yet. Returns the names really added."""
+    if not names:
+        return []
+    with open(career_xml, encoding="utf-8") as f:
+        text = f.read()
+    have = {m.group(1).lower() for m in MOD_LINE.finditer(text)}
+    lines, added = [], []
+    for name in names:
+        if name.lower() in have:
+            continue
+        info = mod_info(name, mods_dir)
+        if info is None:
+            print(f"! {name}.zip isn't in the mods folder: not switched on")
+            continue
+        title, version = info
+        title = title.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+        lines.append(f'    <mod modName="{name}" title="{title}" version="{version}" required="false" fileHash=""/>\n')
+        added.append(name)
+    if added:
+        last = list(MOD_LINE.finditer(text))
+        at = last[-1].end() if last else text.index("</careerSavegame>")
+        text = text[:at] + "".join(lines) + text[at:]
+        with open(career_xml, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+    return added
 
 
 def put_back(folder, backup_zip, name):
@@ -447,9 +489,10 @@ class KeyTyper:
         return False
 
 
-def follow_log(path, since, watch, should_stop, poll=0.5, echo=print):
-    """Reads log.txt as the game writes it (the game starts a new one at launch)."""
-    pos = 0
+def follow_log(path, since, watch, should_stop, poll=0.5, echo=print, from_end=False):
+    """Reads log.txt as the game writes it (the game starts a new one at launch); from_end: only what comes
+    from now on (a game that is already open)."""
+    pos = os.path.getsize(path) if from_end and os.path.isfile(path) else 0
     while not should_stop():
         if os.path.isfile(path) and os.path.getmtime(path) >= since:
             with open(path, encoding="utf-8", errors="replace") as f:
@@ -579,84 +622,181 @@ def set_resolution(res, game_xml=None, script=BORDERLESS):
     return f"Resolution {res} in game.xml{note}"
 
 
+SESSION = os.path.join(WORK, "session.json")     # a game left open with --stay: the next run hands it its steps
+
+
+def load_session(path=SESSION):
+    """The open session ({save, zip, stamp, before, removed}), or None."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            s = json.load(f)
+        s["before"] = {k: tuple(v) for k, v in s.get("before", {}).items()}
+        return s
+    except (OSError, ValueError):
+        return None
+
+
+def save_session(s, path=SESSION):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(dict(s, before={k: list(v) for k, v in s["before"].items()}), f)
+
+
+def end_session(s, save_path, keep_open=False, path=SESSION, work=WORK):
+    """The game closed (ended if it's still running) and the savegame put back, as after a normal run."""
+    if not keep_open:
+        if game_running():
+            end_game()
+            wait_for(lambda: not game_running(), 30)
+        time.sleep(2)   # file handles
+        kept = restore_if_changed(save_path, s["zip"], s["before"], work=work, stamp=s["stamp"])
+        if s.get("removed") and not kept:
+            put_back(save_path, s["zip"], "careerSavegame.xml")
+            print(f"Mod list of savegame{s['save']} put back")
+        if kept:
+            print(f"The game wrote to savegame{s['save']} (autosave?): backup put back, the changed one is in {kept}")
+        else:
+            print(f"savegame{s['save']} unchanged")
+    if os.path.isfile(path):
+        os.remove(path)
+
+
+def close():
+    """Ends a session left open with --stay: quits the game, puts the savegame back."""
+    s = load_session()
+    if s is None:
+        print("No open session." + (" The game is running: close it yourself." if game_running() else ""))
+        return 0
+    saves = {x["index"]: x for x in savegames()}
+    if s["save"] not in saves:
+        sys.exit(f"savegame{s['save']} of the session is gone")
+    end_session(s, saves[s["save"]]["path"])
+    return 0
+
+
 def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
-        start_timeout=900, timeout=2400, press=True, without=None, resolution=None):
+        start_timeout=900, timeout=2400, press=True, without=None, resolution=None, window=True, stay=False,
+        voice=True, with_=None):
     saves = {s["index"]: s for s in savegames()}
     if save not in saves:
         sys.exit(f"No savegame{save} in {DOCS} (see: saves)")
     sg = saves[save]
+    session = load_session()
+    running = game_running()
+    if session is not None and not running and not dry_run:
+        print("The session's game is gone (closed or crashed): putting the savegame back first")
+        if session["save"] in saves:
+            end_session(session, saves[session["save"]]["path"])
+        session = None
+    attach = session is not None and running
     problems = []
-    if game_running():
+    if attach and session["save"] != save:
+        problems.append(f"the open game is savegame{session['save']}, not {save}: `close` it first")
+    if running and not attach:
         problems.append("the game is running: close it first")
     have, want = installed_version(), repo_version()
-    if have is None:
-        problems.append(f"{MOD_NAME}.zip isn't in your mods folder: install it first (this script never copies it there)")
-    elif have != want:
-        problems.append(f"your mods folder has {MOD_NAME} {have}, the repo is {want}: install the new zip first")
-    if not sg["hasMod"]:
-        problems.append(f"savegame{save} ({sg['name']}) doesn't have {MOD_NAME} switched on: add it in the mod list of that save")
-    for p in problems:
-        print("! " + p)
-    if problems and not anyway:
-        sys.exit("Stopped (--anyway to try regardless).")
-    if not keep_open and steps[-1:] != ["quit"]:
+    if not attach:
+        if have is None:
+            problems.append(f"{MOD_NAME}.zip isn't in your mods folder: install it first (this script never copies it there)")
+        elif have != want:
+            problems.append(f"your mods folder has {MOD_NAME} {have}, the repo is {want}: install the new zip first")
+        if not sg["hasMod"] and MOD_NAME.lower() not in {m.lower() for m in with_ or []}:
+            problems.append(f"savegame{save} ({sg['name']}) doesn't have {MOD_NAME} switched on: add it in the mod list of that save")
+    for p_ in problems:
+        print("! " + p_)
+    if problems and (attach or not anyway):
+        sys.exit("Stopped" + ("" if attach else " (--anyway to try regardless)") + ".")
+    if not keep_open and not stay and steps[-1:] != ["quit"]:
         steps = steps + ["quit"]
-    print(f"savegame{save}: {sg['name']} ({sg['map']}), {len(steps)} steps:")
+    if stay and steps[-1:] == ["quit"]:
+        steps = steps[:-1]
+    print(f"savegame{save}: {sg['name']} ({sg['map']}), {len(steps)} steps"
+          + (" (to the open game)" if attach else "") + (", the game stays open afterwards" if stay else "") + ":")
     for i, s in enumerate(steps, 1):
         print(f"  {i:2d}. {s}")
-    if without:
+    if attach and (without or resolution or with_):
+        print("! The game is already open: --with-mod, --without-mod and --resolution only work when it starts (`close` first)")
+    elif with_:
+        print(f"switched on for this run only: {', '.join(with_)}")
+    elif without:
         print(f"switched off for this run only: {', '.join(without)}")
-    if resolution:
+    if resolution and not attach:
         print(f"resolution for this run: {resolution} (menu and UI shots come out this size)")
     if dry_run:
         print("Dry run: nothing written, game not started.")
         return 0
-    steam = steam_exe()
-    if steam is None:
-        sys.exit("Steam not found")
-    if resolution:
-        print(set_resolution(resolution))
-
-    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    zip_path, before = backup(sg["path"], stamp=stamp)
-    print(f"Backup: {zip_path}")
-    career = os.path.join(sg["path"], "careerSavegame.xml")
-    removed = without_mods(career, without)
-    for name in without or []:
-        if name.lower() not in {r.lower() for r in removed}:
-            print(f"! {name} isn't in savegame{save}'s mod list")
-    if removed:
-        print(f"Switched off for this run: {', '.join(removed)}")
-        before = snapshot(sg["path"])
+    if not attach:
+        steam = steam_exe()
+        if steam is None:
+            sys.exit("Steam not found")
+        if resolution:
+            print(set_resolution(resolution))
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_path, before = backup(sg["path"], stamp=stamp)
+        print(f"Backup: {zip_path}")
+        career = os.path.join(sg["path"], "careerSavegame.xml")
+        removed = without_mods(career, without)
+        for name in without or []:
+            if name.lower() not in {r.lower() for r in removed}:
+                print(f"! {name} isn't in savegame{save}'s mod list")
+        added = with_mods(career, with_)
+        if removed:
+            print(f"Switched off for this run: {', '.join(removed)}")
+        if added:
+            print(f"Switched on for this run: {', '.join(added)}")
+        if removed or added:
+            before = snapshot(sg["path"])
+        session = {"save": save, "zip": zip_path, "stamp": stamp, "before": before, "removed": removed + added}
+        if stay:
+            save_session(session)
     started_at = time.time()
-    write_autorun(steps, save)
+    hand = {i + 1: ss_prompt.split_hand(s)[1] for i, s in enumerate(steps) if ss_prompt.split_hand(s)[1]}
+    write_autorun([ss_prompt.split_hand(s)[0] for s in steps], save)   # the game gets them without the " # " notes
+    for old in glob.glob(os.path.join(STUDIO, ss_prompt.GO_FILE.replace("%d", "*"))):
+        os.remove(old)
+    if hand:
+        print("steps by hand: " + "; ".join(f"{n}: {t}" for n, t in hand.items()))
+    director = ss_prompt.Director(steps, os.path.join(WORK, "prompt.json"), go_dir=STUDIO, window=window,
+                                  voice=voice).start()
     log_path = os.path.join(DOCS, "log.txt")
     watch = LogWatch()
+    if attach:
+        watch.entered = True
     result = 1
     try:
-        subprocess.Popen([steam, "-applaunch", APP_ID, "-autoStartSavegameId", str(save), "-skipStartVideos"])
-        print("Starting the game through Steam ...")
-        if not wait_for(game_running, 180):
-            print("! The game didn't start within 3 minutes")
-            return 1
         import threading
         stop = threading.Event()
-        t = threading.Thread(target=follow_log, args=(log_path, started_at - 5, watch, stop.is_set), daemon=True)
+        if attach:
+            print("Handing the steps to the open game ...")
+        else:
+            subprocess.Popen([steam, "-applaunch", APP_ID, "-autoStartSavegameId", str(save), "-skipStartVideos"])
+            print("Starting the game through Steam ...")
+            if not wait_for(game_running, 180):
+                print("! The game didn't start within 3 minutes")
+                return 1
+        t = threading.Thread(target=follow_log, args=(log_path, started_at - 5, watch, stop.is_set),
+                             kwargs={"from_end": attach}, daemon=True)
         t.start()
-        presser = StartPresser(enabled=press)
-        if not wait_for(lambda: presser.tick(watch) or watch.started or watch.refused or not game_running(), start_timeout):
-            print(f"! No autorun after {start_timeout // 60} min. Waiting at a start screen? Is the mod active in that save?")
+        presser = StartPresser(enabled=press and not attach)
+        if not wait_for(lambda: presser.tick(watch) or director.tick(watch) or watch.started or watch.refused
+                        or not game_running(), 120 if attach else start_timeout):
+            print("! The open game didn't take the steps within 2 min (a menu open? a different save?)" if attach else
+                  f"! No autorun after {start_timeout // 60} min. Waiting at a start screen? Is the mod active in that save?")
         elif watch.refused:
             print("! The mod didn't run the steps (see above)")
         elif not game_running():
             print("\n".join(ended_early(watch, crash_logged(started_at), crash_dumps(started_at))))
         else:
             typer = KeyTyper()
-            finished = wait_for(lambda: typer.tick(watch) or watch.done or not game_running(), timeout, poll=0.3)
+            finished = wait_for(lambda: typer.tick(watch) or director.tick(watch) or watch.done or not game_running(),
+                                timeout, poll=0.3)
             if watch.done:
                 result = 0
                 if keep_open:
                     print("Steps done; the game stays open (--keep-open). Save or not, as you like.")
+                elif stay:
+                    print("Steps done; the game stays open (--stay): the next run hands it its steps, "
+                          "`close` ends it and puts the savegame back.")
                 elif not wait_for(lambda: not game_running(), 20):
                     print("Ending the game (without saving)")
             elif finished:
@@ -670,22 +810,14 @@ def run(save, steps, keep_open=False, sheet=False, anyway=False, dry_run=False,
         print("Stopped")
     finally:
         remove_autorun()
-        if not keep_open:
-            if game_running():
-                end_game()
-                wait_for(lambda: not game_running(), 30)
-            time.sleep(2)   # file handles
-            kept = restore_if_changed(sg["path"], zip_path, before, stamp=stamp)
-            if removed and not kept:
-                put_back(sg["path"], zip_path, "careerSavegame.xml")
-                print(f"Mod list of savegame{save} put back")
-            if kept:
-                print(f"The game wrote to savegame{save} (autosave?): backup put back, the changed one is in {kept}")
-            else:
-                print(f"savegame{save} unchanged")
+        director.close("Done" if result == 0 else "Stopped",
+                       ("The game stays open for the next pictures." if stay else "The computer is yours.")
+                       if result == 0 else "See the runner's window for what happened.")
+        if not (stay and result == 0 and game_running()):
+            end_session(session, sg["path"], keep_open=keep_open)
         if os.path.isfile(log_path):
             os.makedirs(WORK, exist_ok=True)
-            shutil.copy2(log_path, os.path.join(WORK, f"log_{stamp}.txt"))
+            shutil.copy2(log_path, os.path.join(WORK, f"log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"))
 
     print(f"\nlog: {watch.errors} error line(s) in the whole log (other mods too); copy in {WORK}")
     pics = new_pictures(started_at)
@@ -704,6 +836,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("saves")
     sub.add_parser("plans")
+    sub.add_parser("close", help="end a game left open with --stay: quit it, put the savegame back")
     r = sub.add_parser("run")
     r.add_argument("save", type=int)
     r.add_argument("--plan", choices=sorted(PLANS), default="smoke")
@@ -714,10 +847,16 @@ def main(argv=None):
     r.add_argument("--move", action="store_true",
                    help="move it (with what is hitched) to your ssSpot or an open, flat place first, and back at the end")
     r.add_argument("--keep-open", action="store_true", help="leave the game running afterwards (no backup restore)")
+    r.add_argument("--stay", action="store_true",
+                   help="leave the game open for the next run, which hands it its steps (no restart); `close` ends it")
     r.add_argument("--sheet", action="store_true", help="contact sheet of the new pictures")
     r.add_argument("--anyway", action="store_true", help="start even if a check fails")
     r.add_argument("--dry-run", action="store_true", help="only the checks and the steps")
     r.add_argument("--no-press", action="store_true", help="don't press START on the loading screen (you do)")
+    r.add_argument("--no-window", action="store_true", help="no step window (progress, your turn) beside the game")
+    r.add_argument("--no-voice", action="store_true", help="steps by hand without the spoken words and the voice control (keys only)")
+    r.add_argument("--with-mod", action="append", metavar="MOD",
+                   help="switch a mod from your mods folder on in the save for this run only: --with-mod FS25_ScreenshotStudio")
     r.add_argument("--without-mod", action="append", metavar="MOD",
                    help="switch a mod off in the save for this run only, e.g. one that clashes: --without-mod FS25_OldMod")
     r.add_argument("--resolution", metavar="WxH",
@@ -732,6 +871,8 @@ def main(argv=None):
             print(f"{s['index']:3d}  {'mod on ' if s['hasMod'] else '       '}  {s['name'][:30]:30s}  {s['map'][:24]:24s}  {s['date']}")
         print(f"\ninstalled {MOD_NAME}: {installed_version() or 'none'}, repo: {repo_version()}")
         return 0
+    if args.cmd == "close":
+        return close()
     if args.cmd == "plans":
         for k in sorted(PLANS):
             print(f"{k:7s} {PLAN_TEXT[k]}\n        " + " / ".join(PLANS[k]))
@@ -739,7 +880,8 @@ def main(argv=None):
     steps = with_move(with_target(list(args.steps) if args.steps else list(PLANS[args.plan]), args.target), args.move)
     steps = with_menus(steps, args.menu, args.folder)
     return run(args.save, steps, keep_open=args.keep_open, sheet=args.sheet, anyway=args.anyway, dry_run=args.dry_run,
-               press=not args.no_press, without=args.without_mod, resolution=args.resolution)
+               press=not args.no_press, without=args.without_mod, with_=args.with_mod, resolution=args.resolution,
+               window=not args.no_window, stay=args.stay, voice=not args.no_voice)
 
 
 def with_menus(steps, menus, folder=None):

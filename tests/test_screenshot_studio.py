@@ -893,6 +893,41 @@ order = [re.search(r'step (\d+/\d+ .*?) ->', l).group(1) for l in logs if ' -> '
 check(order == ['1/8 ssEnter', '2/8 ssLight golden', '3/8 ssShot', '4/8 ssBurst 2 1', '5/8 wait 2', '6/8 bogus step', '7/8 ssLight off'],
       f'steps in order ({order})')
 
+# waitgo: a step done by hand waits for the runner's go file (next / Right Shift + 9), or its max time
+T.exited = None
+write_autorun(['waitgo', 'ssLight golden', 'waitgo 5', 'ssLight off', 'quit'])
+run(13)
+check(SS.autorun is not None and SS.autorun.index == 1 and SS.autorun.go is not None,
+      'waitgo: the autorun waits at step 1')
+run(30)
+check(SS.autorun.index == 1 and T.exited is None, 'waitgo: still waiting without the go file')
+GO1 = 'C:/profile/modSettings/FS25_ScreenshotStudio/autorun_go_1.txt'
+T.files[GO1] = True
+run(3)
+logs = [l for l in lua_list(T.logs) if 'autorun:' in l]
+check(any('go (step 1)' in l for l in logs) and T.files[GO1] is None and SS.autorun.index >= 2,
+      'waitgo: the go file lets it go on, and is deleted')
+run(12)
+logs = [l for l in lua_list(T.logs) if 'autorun:' in l]
+check(any('waited 5 s for step 3, going on' in l for l in logs) and T.exited is True,
+      'waitgo 5: goes on by itself after 5 s, then the rest runs and it quits')
+
+# an open game (runner --stay) takes the next autorun without a restart, after 1 s instead of 10
+write_autorun(['ssShot'])
+SS.autorunChecked = True
+run(3)
+logs = [l for l in lua_list(T.logs) if 'autorun:' in l]
+check(any('started, 1 steps, first in 1 s' in l for l in logs) and T.xmlFiles[AUTORUN] is None,
+      'a new autorun.xml in an open game: picked up within a few seconds, first step after 1 s')
+run(10)
+check(SS.autorun is None, 'and done')
+n_before = len([l for l in lua_list(T.logs) if 'not run' in l])
+write_autorun(['ssShot'], save='7', created='20261112_115600')
+SS.autorunChecked = True
+run(10)
+check(len([l for l in lua_list(T.logs) if 'not run' in l]) == n_before + 1, 'an autorun for another save: said once, not every check')
+T.xmlFiles[AUTORUN] = None
+
 # quit waits while render is on trial: a crash right after the last shot must still count
 SS.consoleMethod(SS, 'render_png')
 T.exited = None

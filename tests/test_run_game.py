@@ -248,6 +248,84 @@ try:
 except SystemExit as e:
     check("WIDTHxHEIGHT" in str(e), "--resolution 16x9 refused")
 
+# --- --with-mod: switched on from the mods folder for this run only
+mods_dir = os.path.join(tmp, "mods_w"); os.makedirs(mods_dir)
+with zipfile.ZipFile(os.path.join(mods_dir, "FS25_Extra.zip"), "w") as zf:
+    zf.writestr("modDesc.xml", "<modDesc><version>1.2.3.4</version><title><en>Extra &amp; Co</en></title></modDesc>")
+cx = os.path.join(tmp, "career_w.xml")
+open(cx, "w", encoding="utf-8").write('<careerSavegame>\n    <mod modName="FS25_A" title="A" version="1.0.0.0" required="false" fileHash="x"/>\n</careerSavegame>\n')
+added = rg.with_mods(cx, ["FS25_A", "FS25_Extra", "FS25_Missing"], mods_dir=mods_dir)
+txt = open(cx, encoding="utf-8").read()
+check(added == ["FS25_Extra"] and 'modName="FS25_Extra" title="Extra &amp; Co" version="1.2.3.4"' in txt
+      and txt.index("FS25_A") < txt.index("FS25_Extra") < txt.index("</careerSavegame>"),
+      f"--with-mod: a line after the last mod, title and version from its modDesc; one already on or missing: left ({added})")
+ET.fromstring(txt)   # still valid XML
+
+# --- --stay: the session file keeps the backup for the next run and for close
+sg_dir = os.path.join(tmp, "savegame9"); os.makedirs(sg_dir)
+open(os.path.join(sg_dir, "careerSavegame.xml"), "w").write("<career/>")
+zp, before = rg.backup(sg_dir, work=tmp, stamp="20261122_120000")
+sess_file = os.path.join(tmp, "session.json")
+rg.save_session({"save": 9, "zip": zp, "stamp": "20261122_120000", "before": before, "removed": []}, path=sess_file)
+back = rg.load_session(path=sess_file)
+check(back["save"] == 9 and back["before"] == before, "session: saved and read back (the snapshot as tuples)")
+open(os.path.join(sg_dir, "careerSavegame.xml"), "w").write("<career changed='yes'/>")
+real_running, rg.game_running = rg.game_running, lambda: False
+real_sleep, rg.time.sleep = rg.time.sleep, lambda s: None
+try:
+    rg.end_session(back, sg_dir, path=sess_file, work=tmp)
+finally:
+    rg.game_running, rg.time.sleep = real_running, real_sleep
+check(open(os.path.join(sg_dir, "careerSavegame.xml")).read() == "<career/>" and not os.path.isfile(sess_file),
+      "end_session: the savegame back as it was, the session file gone")
+
+# --- the step window (ss_prompt.py): progress, your turn, next writes the go file
+import json as _json
+sp = rg.ss_prompt
+check(sp.split_hand("waitgo # Open the menu") == ("waitgo", "Open the menu") and sp.split_hand("ssShot") == ("ssShot", None),
+      "split_hand: the note after ' # ' is for you, the rest for the game")
+steps = ["ssFolder FS25_A", "wait 10", "waitgo # Open the mode menu", "ssUi 1", "ssFolder FS25_B", "wait 60 # Drive it", "quit"]
+clock = [1000.0]
+class FakeKeys:
+    def __init__(self): self.ev = []
+    def take(self): ev, self.ev = self.ev, []; return ev
+    def stop(self): pass
+class FakeVoice:
+    def __init__(self): self.said = []
+    def say(self, t): self.said.append(t)
+class FakeWatch:
+    started, entered, loaded, step = True, True, True, None
+keys, voice, w = FakeKeys(), FakeVoice(), FakeWatch()
+go_dir = os.path.join(tmp, "go"); os.makedirs(go_dir)
+pf = os.path.join(tmp, "prompt.json")
+d = sp.Director(steps, pf, go_dir=go_dir, window=False, clock=lambda: clock[0], keys=keys, voice=voice).start()
+def shown(): return _json.load(open(pf, encoding="utf-8"))
+w.step = "2/7 wait 10"; d.tick(w)
+s = shown()
+check(s["state"] == "ready" and "Open the mode menu" in s["detail"] and s["bar"]["label"].startswith("FS25_A (1 of 2)"),
+      f"GET READY before the step by hand, the bar names the folder ({s['state']}, {s['bar']})")
+check(voice.said == ["Get ready."], f"said: get ready ({voice.said})")
+w.step = "3/7 waitgo"; d.tick(w)
+s = shown()
+check(s["state"] == "you" and s["title"] == "Open the mode menu" and s["until"] is None and "Right Shift + 9" in s["detail"],
+      "YOUR TURN: the note, no countdown (the game waits), the keys to say you're done")
+check(voice.said[-1] == "Your turn. Open the mode menu.", f"said out loud ({voice.said[-1]})")
+keys.ev = ["pause"]; d.tick(w)
+check(shown()["state"] == "pause", "pause: PAUSED")
+keys.ev = ["next"]; d.tick(w)
+check(not os.listdir(go_dir), "next while paused: nothing yet")
+keys.ev = ["resume", "next"]; d.tick(w)
+check(os.path.isfile(os.path.join(go_dir, "autorun_go_3.txt")) and shown()["state"] == "wait",
+      "go on, then next: autorun_go_3.txt for the game, HANDS OFF again")
+w.step = "6/7 wait 60"; clock[0] += 30; d.tick(w)
+s = shown()
+check(s["state"] == "you" and s["until"] is not None and s["bar"]["label"].startswith("FS25_B (2 of 2)"),
+      "a timed step by hand: YOUR TURN with a countdown")
+keys.ev = ["next"]; d.tick(w)
+check(not os.path.isfile(os.path.join(go_dir, "autorun_go_6.txt")), "next on a timed step writes no go file")
+d.close()
+check(shown()["state"] == "exit", "close: the window goes after a few seconds")
+
 shutil.rmtree(tmp, ignore_errors=True)
 print()
 print('All passed' if not failures else f'{len(failures)} failed')

@@ -2561,10 +2561,15 @@ end
 -- tools/fs25_run_game.py writes modSettings/FS25_ScreenshotStudio/autorun.xml, starts the game with
 -- that save and reads the log:
 --   <autorun savegame="3" created="20261112_183000"><step>ssLight golden</step>...<step>quit</step></autorun>
--- Steps are console commands (ssShot, ssOrbit 8, ssColors, ssEnter, ...), "wait <seconds>" or
--- "quit". Each one starts when the one before is done. The file is only used in the save it names,
--- only if it's less than 20 minutes old, and it's deleted once read, so a normal game never runs it.
+-- Steps are console commands (ssShot, ssOrbit 8, ssColors, ssEnter, ...), "wait <seconds>",
+-- "waitgo [<max seconds>]" or "quit". Each one starts when the one before is done. The file is only used in
+-- the save it names, only if it's less than 20 minutes old, and it's deleted once read, so a normal game
+-- never runs it. waitgo: a step done by hand (open a menu, start a job); the autorun waits until the runner
+-- writes autorun_go_<step number>.txt next to it (you said "next" or pressed Right Shift + 9 in its step
+-- window), at most <max seconds> (600).
 SS.AUTORUN_FILE = "autorun.xml"
+SS.AUTORUN_GO = "autorun_go_%d.txt"
+SS.AUTORUN_GO_MAX = 600       -- seconds a waitgo waits at most
 SS.AUTORUN_MAX_AGE = 20       -- minutes
 SS.AUTORUN_START_S = 10       -- after the save is running: let the map stream in
 SS.AUTORUN_PAUSE = { ssLight = 3, ssGolden = 3, ssEnter = 8, ssMove = 6, ssMenu = 2, ssKeys = 4, ssType = 2, ssTab = 2, ssClick = 2 }   -- seconds after these steps; others 1
@@ -2603,7 +2608,10 @@ function SS:readAutorun()
     local info = g_currentMission ~= nil and g_currentMission.missionInfo or nil
     local here = info ~= nil and tostring(info.savegameIndex) or "?"
     if save ~= here then
-        log("autorun: %s is for savegame %s, this is %s: not run", self.AUTORUN_FILE, tostring(save), here)
+        if self.autorunRefused ~= tostring(created) then      -- said once per file (checked every few seconds)
+            self.autorunRefused = tostring(created)
+            log("autorun: %s is for savegame %s, this is %s: not run", self.AUTORUN_FILE, tostring(save), here)
+        end
         return nil
     end
     local age = (stampMinutes(getDate("%Y%m%d_%H%M%S")) or 0) - (stampMinutes(created) or -math.huge)
@@ -2616,15 +2624,22 @@ function SS:readAutorun()
     return steps
 end
 
+-- First when the save is running, then every AUTORUN_POLL_S while no autorun runs: a game left open by the
+-- runner (--stay) takes the next set of steps without a restart.
+SS.AUTORUN_POLL_S = 2
 function SS:checkAutorun()
-    if self.autorunChecked then return end
+    if self.autorun ~= nil then return end
+    if self.autorunChecked and now() < (self.autorunNextCheck or 0) then return end
     local info = g_currentMission ~= nil and g_currentMission.missionInfo or nil
     if info == nil or g_localPlayer == nil or g_currentMission.gameStarted == false then return end
+    local first = not self.autorunChecked
     self.autorunChecked = true
+    self.autorunNextCheck = now() + self.AUTORUN_POLL_S * 1000
     local steps = self:readAutorun()
     if steps == nil then return end
-    self.autorun = { steps = steps, index = 0, nextAt = now() + self.AUTORUN_START_S * 1000, pictures = 0 }
-    log("autorun: started, %d steps, first in %d s", #steps, self.AUTORUN_START_S)
+    local wait = first and self.AUTORUN_START_S or 1     -- an open game: the map is there already
+    self.autorun = { steps = steps, index = 0, nextAt = now() + wait * 1000, pictures = 0 }
+    log("autorun: started, %d steps, first in %d s", #steps, wait)
 end
 
 function SS:runStep(step)
@@ -2633,6 +2648,12 @@ function SS:runStep(step)
     local name = table.remove(words, 1)
     if name == "wait" then
         return tonumber(words[1]) or 1, "waiting"
+    end
+    if name == "waitgo" and self.autorun ~= nil then
+        local max = tonumber(words[1]) or self.AUTORUN_GO_MAX
+        self.autorun.go = { file = self:getBaseDir() .. string.format(self.AUTORUN_GO, self.autorun.index),
+                            untilAt = now() + max * 1000, max = max }
+        return 0, string.format("waiting for you (next / Right Shift + 9 in the step window), at most %d s", max)
     end
     if name == "quit" then
         return 0, "quit"
@@ -2649,6 +2670,19 @@ end
 function SS:tickAutorun()
     local a = self.autorun
     if a == nil or self:isBusy() or now() < a.nextAt then return end
+    if a.go ~= nil then                     -- waitgo: until the runner says go, or the time is up
+        if fileExists(a.go.file) then
+            removeFile(a.go.file)
+            log("autorun: go (step %d)", a.index)
+        elseif now() >= a.go.untilAt then
+            log("autorun: waited %d s for step %d, going on", a.go.max, a.index)
+        else
+            return
+        end
+        a.go = nil
+        a.nextAt = now() + 1000
+        return
+    end
     local step = a.steps[a.index + 1]
     -- don't quit while render is still on trial: a crash then must still be noticed next start
     if (step == nil or step == "quit") and self.trying ~= nil then return end

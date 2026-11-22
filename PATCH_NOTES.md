@@ -2,6 +2,12 @@
 
 The release page of a version takes its text from the section of that version here.
 
+## 0.2.2.7
+
+- **Step window:** while the game runner takes pictures, a small window beside the game shows how far the run is (progress bar, the folder being shot, time left) and what's going on: HANDS OFF, GET READY, YOUR TURN, PAUSED. It never takes the focus and is never in the pictures (`--no-window`: without it).
+- **No restart between runs:** `--stay` leaves the game open; the next run of the same save hands its steps to the open game (the mod picks up a new `autorun.xml` within 2 seconds), and `close` ends the game and puts the savegame back.
+- **Steps by hand:** a note after ` # ` in a step is shown and said out loud when it's your turn. The new autorun step **`waitgo [<max seconds>]`** waits until you say "next" (or "go", "done") or press **Right Shift + 9**; "pause" / Right Shift + 8 shows you're away. For pictures that need you: a drop-down to open, a job to start.
+
 ## 0.2.2.6
 
 - **Game runner:** `--resolution 1600x900` sets the game's resolution for the run, so menu shots come out that size (through DTM-Mods' `fs25_borderless.ps1 -Resolution` when it's there); `ssKeys` knows the number pad (`num0` ... `num9`, e.g. `lalt+num0` for AutoDrive's window) and a middle click (`mclick@x,y`).
